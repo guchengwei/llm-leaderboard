@@ -1,7 +1,7 @@
 import pandas as pd
-from utils import read_wandb_table
-from config_singleton import WandbConfigSingleton
-from .evaluate_utils import commet_score
+from ....utils import read_wandb_table
+from ....config_singleton import WandbConfigSingleton
+from .metrics import commet_score
 
 
 def evaluate():

@@ -1,8 +1,7 @@
 # Evaluator modules
-from . import jaster
+from .evaluate_utils import jaster_pkg
 from . import jbbq
 from . import mtbench
-from . import jaster_translation
 from . import toxicity
 from . import jtruthfulqa
 from . import aggregate
@@ -15,10 +14,9 @@ from . import hle
 from . import m_ifeval
 
 __all__ = [
-    'jaster',
+    'jaster_pkg',
     'jbbq', 
     'mtbench',
-    'jaster_translation',
     'toxicity',
     'jtruthfulqa',
     'aggregate',

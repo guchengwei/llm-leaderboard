@@ -8,20 +8,20 @@ from toolz import pipe
 from tqdm import tqdm
 import wandb
 
-from config_singleton import WandbConfigSingleton
-from .evaluate_utils import (
+from ....config_singleton import WandbConfigSingleton
+from .. import (
     apply_chat_template,
     get_few_shot_messages,
-    jaster_metrics_dict,
-    controllability_dict,
     task_to_sub_category,
     LLMAsyncProcessor,
     extract_answer_with_pattern,
     AnswerPatternId,
     normalize,
     text_formatter,
-    evaluate_robustness,
 )
+from .metrics import jaster_metrics_dict
+from .controllability import controllability_dict
+from .robustness import evaluate_robustness
 
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration

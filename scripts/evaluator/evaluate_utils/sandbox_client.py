@@ -23,7 +23,7 @@ def get_sandbox_config():
         cfg = instance.config
         
         # Return sandbox configuration from config file (jaster.jhumaneval.dify_sandbox)
-        jaster_cfg = cfg.get('jaster', {})
+        jaster_cfg = cfg.get('jaster_pkg', {}).get('jaster', {})
         jhumaneval_cfg = jaster_cfg.get('jhumaneval', {})
         sandbox_cfg = jhumaneval_cfg.get('dify_sandbox', {})
         
