@@ -1,0 +1,86 @@
+wandb:
+  run_name: zai-org/GLM-4.5-Air
+api: vllm-docker
+num_gpus: 4
+batch_size: 128
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: zai-org/GLM-4.5-Air
+  bfcl_model_id: "unified-oss-fc"
+  size_category: "Large (30B+)"
+  size: 110468824832
+  release_date: 07/28/2025
+
+vllm: # This config not used because vLLM launched manually, but for record
+  vllm_tag: v0.12.0
+  lifecycle: always_on
+  gpu_memory_utilization: 0.95
+  reasoning_parser: glm45
+  tool_call_parser: glm45
+  enable_auto_tool_choice: true
+  trust_remote_code: true
+
+generator:
+  max_tokens: 131072
+  temperature: 0.6
+  top_p: 0.95
+
+jaster:
+  override_max_tokens: 131072
+
+jbbq:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+swebench:
+  max_tokens: 131072
+
+mtbench:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 131072
+    temperature: 0.6
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 131072

@@ -1,0 +1,86 @@
+wandb:
+  run_name: "Qwen/Qwen3-4B-Thinking-2507" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 1
+batch_size: 256
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "Qwen/Qwen3-4B-Thinking-2507" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-fc"
+  size_category: "Small (<10B)"
+  size: 4022468096
+  release_date: "8/6/2025"
+
+vllm:
+  vllm_tag: v0.12.0
+  gpu_memory_utilization: 0.95
+  reasoning_parser: deepseek_r1
+  tool_call_parser: hermes
+  enable_auto_tool_choice: true
+
+generator:
+  max_tokens: 262144
+  temperature: 0.6
+  top_p: 0.95
+
+jaster:
+  override_max_tokens: 262144
+
+jbbq:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+swebench:
+  max_tokens: 262144
+
+mtbench:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 262144
+    temperature: 0.6
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 262144

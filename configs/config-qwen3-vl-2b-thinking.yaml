@@ -1,0 +1,93 @@
+wandb:
+  run_name: "Qwen/Qwen3-VL-2B-Thinking" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 1
+batch_size: 256
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "Qwen/Qwen3-VL-2B-Thinking" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-fc"
+  size_category: "Small (<10B)"
+  size: 2127532032
+  release_date: "10/22/2025"
+
+vllm:
+  vllm_tag: v0.12.0
+  gpu_memory_utilization: 0.95
+  reasoning_parser: deepseek_r1
+  tool_call_parser: hermes
+  enable_auto_tool_choice: true
+  extra_args:
+    - '--limit-mm-per-prompt {"image":0,"video":0}'
+    - '--disable-mm-preprocessor-cache'
+
+generator: # https://huggingface.co/Qwen/Qwen3-VL-2B-Thinking#text
+  max_tokens: 262144
+  temperature: 1.0
+  top_p: 0.95
+  presence_penalty: 1.5
+  extra_body:
+    repetition_penalty: 1.0
+    top_k: 20
+
+jaster:
+  override_max_tokens: 262144
+
+jbbq:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+swebench:
+  max_tokens: 262144
+
+mtbench:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+  temperature_override:
+    writing: 1.0
+    roleplay: 1.0
+    extraction: 1.0
+    math: 1.0
+    coding: 1.0
+    reasoning: 1.0
+    stem: 1.0
+    humanities: 1.0
+
+bfcl:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 262144
+    temperature: 1.0
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 262144
