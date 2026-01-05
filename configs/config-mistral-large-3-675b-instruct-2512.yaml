@@ -1,0 +1,27 @@
+wandb:
+  run_name: mistralai/Mistral-Large-3-675B-Instruct-2512
+api: vllm-docker
+num_gpus: 8
+batch_size: 256
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: mistralai/Mistral-Large-3-675B-Instruct-2512
+  bfcl_model_id: "unified-oss-fc"
+  size_category: "Large (30B+)"
+  size: 676032104960
+  release_date: 12/03/2025
+
+vllm: # This config not used because vLLM launched manually, but for record
+  vllm_tag: v0.12.0
+  lifecycle: always_on
+  gpu_memory_utilization: 0.95
+  enable_auto_tool_choice: true
+  tool_call_parser: mistral
+  extra_args:
+    - "--config_format=mistral"
+    - "--load_format=mistral"
+    - "--tokenizer_mode=mistral"
+
+generator:
+  max_tokens: 262144
+  temperature: 0.0
