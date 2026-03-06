@@ -1,0 +1,68 @@
+wandb:
+  run_name: google/gemini-3.1-flash-lite-preview
+api: google # openai, anthropic, google,..
+batch_size: 32
+inference_interval: 2
+model:
+  pretrained_model_name_or_path: gemini-3.1-flash-lite-preview # if you use Google Gemini API, put the exact model name
+  bfcl_model_id: "gemini-3.1-flash-lite-preview-FC" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 3/3/2026
+  thinking_level: high # Gemini 3.1 Flash-Lite supports thinking levels
+  safety_settings:
+    - category: "HARM_CATEGORY_HATE_SPEECH"
+      threshold: "BLOCK_NONE"
+    - category: "HARM_CATEGORY_SEXUALLY_EXPLICIT"
+      threshold: "BLOCK_NONE"
+    - category: "HARM_CATEGORY_DANGEROUS_CONTENT"
+      threshold: "BLOCK_NONE"
+    - category: "HARM_CATEGORY_HARASSMENT"
+      threshold: "BLOCK_NONE"
+    - category: "HARM_CATEGORY_CIVIC_INTEGRITY"
+      threshold: "BLOCK_NONE"
+
+generator: # LLM client default configuration: to be overridden by each benchmark
+  max_tokens: 65000
+
+jaster:
+  override_max_tokens: 65000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 65000
+
+toxicity:
+  generator_config:
+    max_tokens: 65000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65000
+
+swebench:
+  max_tokens: 65000
+
+mtbench:
+  generator_config:
+    max_tokens: 65000
+
+bfcl:
+  generator_config:
+    max_tokens: 65000
+
+hallulens:
+  generator_config:
+    max_tokens: 65000
+
+hle:
+  generator_config:
+    max_tokens: 65000
+
+arc_agi:
+  max_output_tokens: 65000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 65000

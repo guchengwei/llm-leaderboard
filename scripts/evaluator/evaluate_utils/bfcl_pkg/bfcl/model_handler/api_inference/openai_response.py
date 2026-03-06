@@ -92,6 +92,15 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return prompts
 
+    @staticmethod
+    def _serialize_output_item_for_history(item):
+        """Convert SDK response items into plain dicts reusable as stateless Responses input."""
+        if hasattr(item, "model_dump"):
+            return item.model_dump(exclude_none=True)
+        if hasattr(item, "to_dict"):
+            return item.to_dict()
+        return None
+
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
             decoded_output = []
@@ -186,20 +195,33 @@ class OpenAIResponsesHandler(BaseHandler):
         model_responses = []
         tool_call_ids = []
 
-        # Extract tool calls and build a store=false safe history payload (function_call items only)
+        # In stateless mode, GPT-5 performs best when reasoning items with encrypted_content
+        # are passed back unchanged alongside function_call items.
         safe_history_items = []
         for item in api_response.output:
-            if item.type == "function_call":
+            serialized_item = OpenAIResponsesHandler._serialize_output_item_for_history(item)
+
+            if item.type == "reasoning":
+                if (
+                    self.use_encrypted_reasoning
+                    and serialized_item
+                    and serialized_item.get("encrypted_content")
+                ):
+                    safe_history_items.append(serialized_item)
+            elif item.type == "function_call":
                 model_responses.append({item.name: item.arguments})
                 tool_call_ids.append(item.call_id)
-                safe_history_items.append(
-                    {
-                        "type": "function_call",
-                        "name": item.name,
-                        "arguments": item.arguments,
-                        "call_id": item.call_id,
-                    }
-                )
+                if serialized_item:
+                    safe_history_items.append(serialized_item)
+                else:
+                    safe_history_items.append(
+                        {
+                            "type": "function_call",
+                            "name": item.name,
+                            "arguments": item.arguments,
+                            "call_id": item.call_id,
+                        }
+                    )
 
         if not model_responses:  # If there are no function calls
             model_responses = api_response.output_text

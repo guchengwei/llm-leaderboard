@@ -218,6 +218,19 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             }
             if api_response.content:
                 assistant_message["content"] = api_response.content
+
+            # OpenRouter reasoning preservation (important for reasoning models + tool use)
+            # See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning
+            reasoning_details = getattr(api_response, "reasoning_details", None)
+            if reasoning_details is not None:
+                assistant_message["reasoning_details"] = reasoning_details
+            # Prefer explicit `reasoning` field if present, otherwise fall back to reasoning_content
+            reasoning_plain = getattr(api_response, "reasoning", None)
+            if reasoning_plain:
+                assistant_message["reasoning"] = reasoning_plain
+            elif getattr(api_response, "reasoning_content", None):
+                assistant_message["reasoning"] = api_response.reasoning_content
+
             response_data["model_responses_message_for_chat_history"] = assistant_message
 
         # If no tool_calls, we still need to strip reasoning_content.
@@ -230,6 +243,9 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         # Capture the reasoning trace so it can be logged to the local result file.
         if api_response.reasoning_content:
             response_data["reasoning_content"] = api_response.reasoning_content
+        # Also capture structured reasoning blocks if present (for debugging / result files)
+        if getattr(api_response, "reasoning_details", None) is not None:
+            response_data["reasoning_details"] = api_response.reasoning_details
 
     #### Prompting methods ####
 

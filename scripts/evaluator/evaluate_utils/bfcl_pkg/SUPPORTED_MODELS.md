@@ -74,6 +74,10 @@ These unified handlers eliminate the need to configure individual model-specific
 | Gemini-2.5-Pro                                 | Prompt           | Google         | gemini-2.5-pro                                              |
 | Gemini-3-Pro-Preview                           | Function Calling | Google         | gemini-3-pro-preview-FC                                     |
 | Gemini-3-Pro-Preview                           | Prompt           | Google         | gemini-3-pro-preview                                        |
+| Gemini-3.1-Pro-Preview                         | Function Calling | Google         | gemini-3.1-pro-preview-FC                                   |
+| Gemini-3.1-Pro-Preview                         | Prompt           | Google         | gemini-3.1-pro-preview                                      |
+| Gemini-3.1-Flash-Lite-Preview                  | Function Calling | Google         | gemini-3.1-flash-lite-preview-FC                            |
+| Gemini-3.1-Flash-Lite-Preview                  | Prompt           | Google         | gemini-3.1-flash-lite-preview                               |
 | Gemini (Generic Handler)                       | Function Calling | Google         | gemini-FC                                                   |
 | Gemini-2.5-Pro-Exp-05-06                       | Function Calling | Google         | gemini-2.5-pro-preview-05-06-FC                                 |
 | Gemini-2.5-Pro-Exp-05-06                       | Prompt           | Google         | gemini-2.5-pro-preview-05-06                                    |
@@ -89,6 +93,8 @@ These unified handlers eliminate the need to configure individual model-specific
 | GPT-4.1-nano-2025-04-14                        | Prompt           | OpenAI         | gpt-4.1-nano-2025-04-14                                     |
 | GPT-4.5-Preview-2025-02-27                     | Function Calling | OpenAI         | gpt-4.5-preview-2025-02-27-FC                               |
 | GPT-4.5-Preview-2025-02-27                     | Prompt           | OpenAI         | gpt-4.5-preview-2025-02-27                                  |
+| GPT-5.4-2026-03-05                             | Function Calling | OpenAI         | gpt-5.4-2026-03-05-FC                                       |
+| GPT-5.4-2026-03-05                             | Prompt           | OpenAI         | gpt-5.4-2026-03-05                                          |
 | GPT-4o-2024-11-20                              | Function Calling | OpenAI         | gpt-4o-2024-11-20-FC                                        |
 | GPT-4o-2024-11-20                              | Prompt           | OpenAI         | gpt-4o-2024-11-20                                           |
 | GPT-4o-mini-2024-07-18                         | Function Calling | OpenAI         | gpt-4o-mini-2024-07-18-FC                                   |

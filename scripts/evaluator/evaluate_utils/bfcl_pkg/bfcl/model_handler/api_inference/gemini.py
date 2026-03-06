@@ -77,9 +77,10 @@ class GeminiHandler(BaseHandler):
         warnings.filterwarnings("ignore", message=".*function_call.*")
         warnings.filterwarnings("ignore", message=".*thought_signature.*")
 
-        # please set thinking_budget (more than 0 or -1) in config file
-        # when you use Gemini 2.5 / 3 Pro models
-        self.thinking_budget = getattr(self.cfg.model, 'thinking_budget', 0)
+        # Prefer Gemini 3 thinking_level when provided.
+        # Fallback to thinking_budget for backward compatibility.
+        self.thinking_level = getattr(self.cfg.model, "thinking_level", None)
+        self.thinking_budget = getattr(self.cfg.model, "thinking_budget", 0)
         
 
     @staticmethod
@@ -160,8 +161,30 @@ class GeminiHandler(BaseHandler):
         # Create base config (AFC will be handled by the API defaults)
         config = GenerateContentConfig()
         
-        # Add thinking configuration
-        if self.thinking_budget > 0 or self.thinking_budget == -1:
+        # Add thinking configuration.
+        # Newer SDKs support thinking_level, but older SDKs only accept thinking_budget.
+        level = str(self.thinking_level).strip().lower() if self.thinking_level else None
+        if level:
+            try:
+                config.thinking_config = ThinkingConfig(
+                    include_thoughts=True,
+                    thinking_level=level,
+                )
+            except Exception:
+                # Backward compatibility for environments where thinking_level is unsupported.
+                level_to_budget = {
+                    "minimal": 0,
+                    "low": 1024,
+                    "medium": 8192,
+                    "high": -1,
+                }
+                fallback_budget = level_to_budget.get(level, -1)
+                if fallback_budget != 0:
+                    config.thinking_config = ThinkingConfig(
+                        include_thoughts=True,
+                        thinking_budget=fallback_budget,
+                    )
+        elif self.thinking_budget > 0 or self.thinking_budget == -1:
             config.thinking_config = ThinkingConfig(
                 include_thoughts=True,
                 thinking_budget=self.thinking_budget

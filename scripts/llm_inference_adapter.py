@@ -40,6 +40,11 @@ class ToolCall:
 class LLMResponse:
     content: str
     reasoning_content: str = ""
+    # OpenRouter reasoning blocks (for preserving reasoning across tool calls)
+    # - reasoning: plaintext reasoning (alias of reasoning_content in some providers)
+    # - reasoning_details: structured reasoning blocks (required to preserve tool-use continuity for some reasoning models)
+    reasoning: Optional[str] = None
+    reasoning_details: Optional[Any] = None
     parsed_output: Optional[BaseModel] = None
     tool_calls: Optional[List[ToolCall]] = None
     prompt_tokens: Optional[int] = None
@@ -292,6 +297,7 @@ class ChatBedrock(BaseLLMClient):
             max_tokens = 1024
         
         response = await self._invoke_async(messages=messages, max_tokens=max_tokens)
+        reasoning_content = ""
         
         if "anthropic" in self.model_id.lower():
             content_list = response.get("content", [])
@@ -304,14 +310,23 @@ class ChatBedrock(BaseLLMClient):
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         elif "nova" in self.model_id.lower():
             content_list = response.get("output", {}).get("message", {}).get("content", [])
-            if content_list and len(content_list) > 0:
-                content = content_list[0].get("text", "")
-            else:
-                content = ""
+            reasoning_content = ""
+            content = ""
+            for item in content_list:
+                if "reasoningContent" in item:
+                    reasoning_text = (
+                        item.get("reasoningContent", {})
+                        .get("reasoningText", {})
+                        .get("text", "")
+                    )
+                    if reasoning_text:
+                        reasoning_content += reasoning_text
+                elif "text" in item and not content:
+                    content = item.get("text", "")
         else:
             content = ""
         
-        return LLMResponse(content=content)
+        return LLMResponse(content=content, reasoning_content=reasoning_content)
 
 
 class OpenAIClient:
@@ -409,7 +424,14 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
-        return LLMResponse(content=content, reasoning_content=reasoning_content)
+        reasoning_details = getattr(response.choices[0].message, 'reasoning_details', None)
+        reasoning_plain = getattr(response.choices[0].message, 'reasoning', None)
+        return LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            reasoning=reasoning_plain,
+            reasoning_details=reasoning_details,
+        )
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -539,6 +561,13 @@ class OpenAIClient:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens
         )
+
+        # Preserve OpenRouter reasoning blocks if present (used for tool-call continuity)
+        try:
+            llm_response.reasoning = getattr(response.choices[0].message, 'reasoning', None)
+            llm_response.reasoning_details = getattr(response.choices[0].message, 'reasoning_details', None)
+        except Exception:
+            pass
 
         def parse_arguments(arguments: str):
             """
@@ -870,18 +899,39 @@ class GoogleClient(BaseLLMClient):
                 # Create config with all parameters according to Gemini API docs
                 config_kwargs = {}
                 
-                # Handle thinking configuration for Gemini 2.5 models
-                # Get thinking_budget from config file, not from config_params
+                # Handle thinking configuration for Gemini models.
+                # Prefer thinking_level if available, with compatibility fallback.
                 try:
                     instance = WandbConfigSingleton.get_instance()
                     cfg = instance.config
+                    thinking_level = getattr(cfg.model, "thinking_level", None)
                     thinking_budget = getattr(cfg.model, 'thinking_budget', 0)
-                    
-                    # Handle automatic thinking budget allocation
-                    if thinking_budget == -1:
+
+                    level = str(thinking_level).strip().lower() if thinking_level else None
+                    if level:
+                        try:
+                            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                                thinking_level=level
+                            )
+                            print(f"Gemini thinking enabled with level: {level}")
+                        except Exception:
+                            level_to_budget = {
+                                "minimal": 0,
+                                "low": 1024,
+                                "medium": 8192,
+                                "high": -1,
+                            }
+                            fallback_budget = level_to_budget.get(level, -1)
+                            if fallback_budget == -1:
+                                config_kwargs["thinking_config"] = types.ThinkingConfig()
+                            elif fallback_budget > 0:
+                                config_kwargs["thinking_config"] = types.ThinkingConfig(
+                                    thinking_budget=fallback_budget
+                                )
+                    elif thinking_budget == -1:
                         # Use automatic allocation (API will choose optimal value)
                         config_kwargs["thinking_config"] = types.ThinkingConfig()
-                        print(f"Gemini thinking enabled with automatic budget allocation")
+                        print("Gemini thinking enabled with automatic budget allocation")
                     elif thinking_budget >= 0:
                         # Use specific budget value
                         config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
