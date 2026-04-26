@@ -27,7 +27,14 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         skip_hf = False
         max_len_override = None
         try:
-            handler_cfg = getattr(getattr(getattr(self.cfg, 'bfcl', {}), 'handler_config', {}), 'unified_oss_jsonschema', {})
+            handler_root = getattr(getattr(self.cfg, 'bfcl', {}), 'handler_config', {})
+            model_name = str(getattr(self, "model_name", "")).lower().replace("_", "-")
+            is_fc_handler = getattr(self, "is_fc_model", False) or model_name == "unified-oss-fc"
+            primary_section = 'unified_oss_fc' if is_fc_handler else 'unified_oss_jsonschema'
+            handler_cfg = getattr(handler_root, primary_section, {})
+            # 後方互換: unified_oss_fc が未設定なら unified_oss_jsonschema も参照する
+            if not handler_cfg:
+                handler_cfg = getattr(handler_root, 'unified_oss_jsonschema', {})
             skip_hf = bool(getattr(handler_cfg, 'skip_hf_tokenizer', False))
             max_len_override = getattr(handler_cfg, 'max_context_length_override', None)
         except Exception:
@@ -46,6 +53,8 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
             # apply_chat_template が無くても動くよう最低限の属性だけ持つダミーを設定
             self.tokenizer = SimpleNamespace(model_max_length=max_len_override)
             self.max_context_length = max_len_override
+            # OpenAI-compatible/vLLM serving でも downstream handler が参照できるように保持する
+            self.model_path_or_id = local_model_path or self.model_name_huggingface
             # Chat template の上書きは vLLM 側で適用されるため評価側では不要
             print(f"[BFCL] Skipping HF tokenizer/config. Using max_context_length={self.max_context_length}")
             return
@@ -148,7 +157,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name_huggingface,
+            "model": getattr(self, "model_path_or_id", self.model_name_huggingface),
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=True),
             **self.generator_config,
             # "store": False, removed: because vLLM server doesn't support it
@@ -171,7 +180,7 @@ class OSSHandler(OpenAICompatibleHandler, EnforceOverrides):
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
         kwargs = {
-            "model": self.model_name_huggingface,
+            "model": getattr(self, "model_path_or_id", self.model_name_huggingface),
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=True),
             **self.generator_config,
             # "store": False, removed: because vLLM server doesn't support it

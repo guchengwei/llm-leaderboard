@@ -60,16 +60,16 @@ done
 # ----- 2. 必要サービスを起動 --------------------------------------------------
 # 共通: プロキシ & サンドボックス
 SERVICES=(ssrf-proxy dify-sandbox)
-COMPOSE_ARGS=()
+
+# 依存関係のズレを避けるため、評価コンテナは毎回 build する。
+# 特に openai-compatible 利用時は従来 llm-leaderboard が再 build されず、
+# wandb / weave などの実行環境がリポジトリの lock とズレることがあった。
+COMPOSE_ARGS=(--build)
 
 if [[ "$API_TYPE" == vllm* ]]; then
   PROFILES=(--profile vllm-docker)
   SERVICES+=(vllm)
-  COMPOSE_ARGS+=(--build) # vLLM利用時は常にイメージをビルド
 fi
-
-# always leaderboard last (depends_on OK but to exec later)
-SERVICES+=(llm-leaderboard)
 
 $DEBUG && echo "docker compose ${PROFILES[*]} up -d ${COMPOSE_ARGS[*]} ${SERVICES[*]}"
 
@@ -88,7 +88,10 @@ fi
 # ----- 4. 評価実行 -----------------------------------------------------------
 CMD="cd /workspace && source .venv/bin/activate && python -u scripts/run_eval.py --config $EVAL_CONFIG_PATH"
 
-docker compose exec llm-leaderboard bash -c "$CMD"
+# llm-leaderboard は one-shot ジョブとして run する。
+# up -d でサービス起動後に exec すると、サービス定義の command と exec の両方が走り、
+# 評価が二重起動して W&B Run が重複する。
+docker compose run --rm llm-leaderboard bash -c "$CMD"
 
 # ----- 5. オプション: vLLM 停止 ------------------------------------------------
 if [[ "$API_TYPE" == vllm* ]]; then

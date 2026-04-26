@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Union
+import time
 from wandb.sdk.wandb_run import Run
 from omegaconf import OmegaConf
 from evaluator.aggregate import evaluate
-from utils import read_wandb_table
+from utils import read_wandb_table, read_wandb_table_throttled
 from config_singleton import WandbConfigSingleton
 import wandb
 import yaml
@@ -13,6 +14,8 @@ def process_task(
     old_run: dict[str, Union[str, list[str]]],
     run: Run,
     num_few_shots: int,
+    download_mode: str,
+    download_sleep_sec: float,
 ) -> None:
     if dataset == "mtbench":
         table_names = [
@@ -104,11 +107,22 @@ def process_task(
         raise ValueError(f"Invalid dataset name: {dataset}")
 
     for table_name in table_names:
-        output_table = read_wandb_table(
-            run_path=old_run.run_path,
-            table_name=table_name,
-            run=run,
-        )
+        start = time.time()
+        print(f"[blend] fetching {old_run.run_path} :: {table_name} (mode={download_mode})")
+        if download_mode == "sequential":
+            output_table = read_wandb_table_throttled(
+                run_path=old_run.run_path,
+                table_name=table_name,
+                run=run,
+                sleep_sec=download_sleep_sec,
+            )
+        else:
+            output_table = read_wandb_table(
+                run_path=old_run.run_path,
+                table_name=table_name,
+                run=run,
+            )
+        print(f"[blend] fetched {old_run.run_path} :: {table_name} in {time.time() - start:.1f}s")
         run.log({table_name: output_table})
         if "leaderboard" in table_name:
             if dataset == "mtbench":
@@ -153,6 +167,8 @@ def blend_tables(
     old_runs: dict[str, Union[str, list[str]]],
     run: Run,
     num_few_shots: int,
+    download_mode: str,
+    download_sleep_sec: float,
 ) -> None:
     for old_run in old_runs:
         if old_run.dataset is None:
@@ -163,6 +179,8 @@ def blend_tables(
                 old_run=old_run,
                 run=run,
                 num_few_shots=num_few_shots,
+                download_mode=download_mode,
+                download_sleep_sec=download_sleep_sec,
             )
 
 
@@ -178,6 +196,13 @@ def blend_run(run_chain: bool) -> None:
             blend_cfg = OmegaConf.create(yaml.safe_load(f))
         blend_cfg_dict = OmegaConf.to_container(blend_cfg, resolve=True)
         old_runs: list[dict[str, Union[str, list[str]]]] = blend_cfg.old_runs
+        download_mode = blend_cfg.get("download_mode", "standard")
+        download_sleep_sec = float(blend_cfg.get("download_sleep_sec", 0.05))
+
+    if download_mode not in {"standard", "sequential"}:
+        raise ValueError(
+            f"Invalid blend download_mode: {download_mode}. Use 'standard' or 'sequential'."
+        )
     
     # check mode
     if not run_chain:
@@ -211,7 +236,13 @@ def blend_run(run_chain: bool) -> None:
     artifact.add_file(blend_cfg_path)
     run.log_artifact(artifact)
 
-    blend_tables(old_runs=old_runs, run=run, num_few_shots=cfg.num_few_shots)
+    blend_tables(
+        old_runs=old_runs,
+        run=run,
+        num_few_shots=cfg.num_few_shots,
+        download_mode=download_mode,
+        download_sleep_sec=download_sleep_sec,
+    )
 
     # finish
     if not run_chain:

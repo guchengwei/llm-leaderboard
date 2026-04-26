@@ -4,6 +4,7 @@ import time
 import asyncio
 import inspect
 
+from ...constants.default_prompts import DEFAULT_SYSTEM_PROMPT_WITHOUT_FUNC_DOC
 from ...constants.type_mappings import GORILLA_TO_OPENAPI
 from ..base_handler import BaseHandler
 from ..model_style import ModelStyle
@@ -23,6 +24,26 @@ from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
 
 class OpenAIResponsesHandler(BaseHandler):
+    _ALLOWED_RESPONSES_PARAMS = {
+        "include",
+        "instructions",
+        "max_output_tokens",
+        "max_tool_calls",
+        "metadata",
+        "parallel_tool_calls",
+        "previous_response_id",
+        "reasoning",
+        "service_tier",
+        "store",
+        "stream",
+        "text",
+        "text_format",
+        "tool_choice",
+        "top_logprobs",
+        "truncation",
+        "user",
+    }
+
     def __init__(self, model_name, temperature, llm=None, use_encrypted_reasoning=True) -> None:
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Responses
@@ -33,10 +54,28 @@ class OpenAIResponsesHandler(BaseHandler):
             self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
             self.model = cfg.model
             self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+            handler_cfg = getattr(getattr(cfg, "bfcl", {}), "handler_config", {})
+            if not isinstance(handler_cfg, dict):
+                handler_cfg = OmegaConf.to_container(handler_cfg)
+            openai_responses_handler_cfg = (
+                handler_cfg.get("openai_responses", {})
+                if isinstance(handler_cfg, dict)
+                else {}
+            )
+            if not isinstance(openai_responses_handler_cfg, dict):
+                openai_responses_handler_cfg = OmegaConf.to_container(
+                    openai_responses_handler_cfg
+                )
+            self.inject_bfcl_fc_system_prompt = bool(
+                (openai_responses_handler_cfg or {}).get(
+                    "inject_bfcl_fc_system_prompt", False
+                )
+            )
             # Remove max_tokens to manage it separately if needed
-            self.max_tokens = self.generator_config.pop("max_tokens")
+            self.max_tokens = self.generator_config.pop("max_tokens", None)
             if llm is None:
                 llm = getattr(instance, "llm", None)
+            self.request_config = {}
             # Responses APIのreasoningはトップレベルに渡す必要があるため、
             # generator.extra_body.reasoning を昇格して保持しておく
             try:
@@ -47,19 +86,40 @@ class OpenAIResponsesHandler(BaseHandler):
 
                 extra_body = gen_cfg.get("extra_body", {}) if isinstance(gen_cfg, dict) else {}
                 reasoning = extra_body.get("reasoning") if isinstance(extra_body, dict) else None
-                
-                if reasoning is not None:
-                    self.reasoning_param = reasoning
-                else:
-                    self.reasoning_param = None
+                self.reasoning_param = reasoning if reasoning is not None else None
+
+                if isinstance(gen_cfg, dict):
+                    self.request_config.update(
+                        {
+                            key: value
+                            for key, value in gen_cfg.items()
+                            if key in self._ALLOWED_RESPONSES_PARAMS
+                            and key not in {"max_output_tokens", "reasoning"}
+                            and value is not None
+                        }
+                    )
+
+                if isinstance(self.generator_config, dict):
+                    self.request_config.update(
+                        {
+                            key: value
+                            for key, value in self.generator_config.items()
+                            if key in self._ALLOWED_RESPONSES_PARAMS
+                            and key not in {"max_output_tokens", "reasoning"}
+                            and value is not None
+                        }
+                    )
             except Exception:
+                self.request_config = {}
                 self.reasoning_param = None
         except Exception:
             # Singleton not initialized; proceed without config/llm
             self.model_name_huggingface = None
             self.generator_config = {}
             self.max_tokens = None
+            self.request_config = {}
             self.reasoning_param = None
+            self.inject_bfcl_fc_system_prompt = False
         # Prefer an externally provided Responses client (e.g., OpenAIResponsesClient)
         # If provided and it exposes an AsyncOpenAI via `async_client`, use that; otherwise, fall back to default OpenAI client
         if llm is not None and hasattr(llm, "async_client") and hasattr(llm.async_client, "responses"):
@@ -100,6 +160,38 @@ class OpenAIResponsesHandler(BaseHandler):
         if hasattr(item, "to_dict"):
             return item.to_dict()
         return None
+
+    def _build_request_kwargs(self, input_items: list[dict], tools: list | None = None) -> dict:
+        kwargs = {
+            "input": input_items,
+            "model": self.model.pretrained_model_name_or_path,
+            "store": False,
+        }
+        kwargs.update(getattr(self, "request_config", {}))
+
+        if self.max_tokens is not None:
+            kwargs["max_output_tokens"] = max(int(self.max_tokens), 16)
+
+        if getattr(self, "reasoning_param", None) is not None:
+            kwargs["reasoning"] = self.reasoning_param
+
+        if self._supports_temperature():
+            kwargs["temperature"] = self.temperature
+
+        if tools:
+            kwargs["tools"] = tools
+
+        return kwargs
+
+    def _serialize_response_items_for_history(self, api_response: Response) -> list[dict]:
+        history_items = []
+        for item in api_response.output:
+            serialized_item = OpenAIResponsesHandler._serialize_output_item_for_history(item)
+            if not serialized_item:
+                continue
+            if item.type in {"message", "function_call", "reasoning"}:
+                history_items.append(serialized_item)
+        return history_items
 
     def decode_ast(self, result, language="Python"):
         if "FC" in self.model_name or self.is_fc_model:
@@ -142,34 +234,23 @@ class OpenAIResponsesHandler(BaseHandler):
             "tools": tools,
         }
 
-        kwargs = {
-            "input": message,
-            "store": False,
-        }
-
-        # Use include only if specified in YAML generator config
-        include_from_cfg = self.generator_config.get("include") if hasattr(self, "generator_config") else None
-        if include_from_cfg:
-            kwargs["include"] = include_from_cfg
-
-        # Only pass model if we are not delegating model selection to the provided client
-        # Responses API requires model explicitly
-        kwargs["model"] = self.model.pretrained_model_name_or_path
-
-        # Reasoningの有効化（存在する場合のみ）
-        if getattr(self, "reasoning_param", None) is not None:
-            kwargs["reasoning"] = self.reasoning_param
-
-        # OpenAI reasoning系モデルではtemperatureは未対応
-        if self._supports_temperature():
-            kwargs["temperature"] = self.temperature
-
-        if len(tools) > 0:
-            kwargs["tools"] = tools
-
+        kwargs = self._build_request_kwargs(message, tools=tools)
         return self.generate_with_backoff(**kwargs)
 
+    async def _query_FC_async(self, inference_data: dict):
+        return await asyncio.to_thread(self._query_FC, inference_data)
+
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
+        if self.inject_bfcl_fc_system_prompt:
+            # Native Responses tool calling is permissive and often answers directly unless
+            # we restate BFCL's "return tool calls when appropriate" policy explicitly.
+            test_entry["question"][0] = system_prompt_pre_processing_chat_model(
+                test_entry["question"][0],
+                [],
+                test_entry["id"].rsplit("_", 1)[0],
+                system_prompt_template=DEFAULT_SYSTEM_PROMPT_WITHOUT_FUNC_DOC,
+            )
+
         for round_idx in range(len(test_entry["question"])):
             test_entry["question"][round_idx] = OpenAIResponsesHandler._substitute_prompt_role(
                 test_entry["question"][round_idx]
@@ -194,34 +275,10 @@ class OpenAIResponsesHandler(BaseHandler):
     def _parse_query_response_FC(self, api_response: Response) -> dict:
         model_responses = []
         tool_call_ids = []
-
-        # In stateless mode, GPT-5 performs best when reasoning items with encrypted_content
-        # are passed back unchanged alongside function_call items.
-        safe_history_items = []
         for item in api_response.output:
-            serialized_item = OpenAIResponsesHandler._serialize_output_item_for_history(item)
-
-            if item.type == "reasoning":
-                if (
-                    self.use_encrypted_reasoning
-                    and serialized_item
-                    and serialized_item.get("encrypted_content")
-                ):
-                    safe_history_items.append(serialized_item)
-            elif item.type == "function_call":
+            if item.type == "function_call":
                 model_responses.append({item.name: item.arguments})
                 tool_call_ids.append(item.call_id)
-                if serialized_item:
-                    safe_history_items.append(serialized_item)
-                else:
-                    safe_history_items.append(
-                        {
-                            "type": "function_call",
-                            "name": item.name,
-                            "arguments": item.arguments,
-                            "call_id": item.call_id,
-                        }
-                    )
 
         if not model_responses:  # If there are no function calls
             model_responses = api_response.output_text
@@ -235,7 +292,7 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return {
             "model_responses": model_responses,
-            "model_responses_message_for_chat_history": safe_history_items,
+            "model_responses_message_for_chat_history": self._serialize_response_items_for_history(api_response),
             "tool_call_ids": tool_call_ids,
             "reasoning_content": reasoning_content,
             "input_token": api_response.usage.input_tokens,
@@ -287,29 +344,11 @@ class OpenAIResponsesHandler(BaseHandler):
 
     def _query_prompting(self, inference_data: dict):
         inference_data["inference_input_log"] = {"message": repr(inference_data["message"])}
-
-        kwargs = {
-            "input": inference_data["message"],
-            "store": False,
-        }
-
-        # Use include only if specified in YAML generator config
-        include_from_cfg = self.generator_config.get("include") if hasattr(self, "generator_config") else None
-        if include_from_cfg:
-            kwargs["include"] = include_from_cfg
-
-        # Responses API requires model explicitly
-        kwargs["model"] = self.model.pretrained_model_name_or_path
-
-        # Reasoningの有効化（存在する場合のみ）
-        if getattr(self, "reasoning_param", None) is not None:
-            kwargs["reasoning"] = self.reasoning_param
-
-        # OpenAI reasoning系モデルではtemperatureは未対応
-        if self._supports_temperature():
-            kwargs["temperature"] = self.temperature
-
+        kwargs = self._build_request_kwargs(inference_data["message"])
         return self.generate_with_backoff(**kwargs)
+
+    async def _query_prompting_async(self, inference_data: dict):
+        return await asyncio.to_thread(self._query_prompting, inference_data)
 
     def _pre_query_processing_prompting(self, test_entry: dict) -> dict:
         functions: list = test_entry["function"]
@@ -339,7 +378,7 @@ class OpenAIResponsesHandler(BaseHandler):
 
         return {
             "model_responses": api_response.output_text,
-            "model_responses_message_for_chat_history": api_response.output,
+            "model_responses_message_for_chat_history": self._serialize_response_items_for_history(api_response),
             "reasoning_content": reasoning_content,
             "input_token": api_response.usage.input_tokens,
             "output_token": api_response.usage.output_tokens,

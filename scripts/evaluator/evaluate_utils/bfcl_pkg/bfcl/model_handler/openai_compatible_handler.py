@@ -3,6 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import json
+import copy
 from ..constants.type_mappings import GORILLA_TO_OPENAPI
 from .base_handler import BaseHandler
 from .model_style import ModelStyle
@@ -20,6 +21,30 @@ from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
 
 
+def _to_plain_dict(value):
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    try:
+        return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        return {}
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _deep_merge_dicts(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
 class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
         # temperatureは後方互換のため残しているがgenerator_configから取るので使用しない
@@ -32,7 +57,10 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
-        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.generator_config = _deep_merge_dicts(
+            _to_plain_dict(getattr(cfg, "generator", {})),
+            _to_plain_dict(cfg.bfcl.generator_config),
+        )
         self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
 
         # Read from env vars with fallbacks

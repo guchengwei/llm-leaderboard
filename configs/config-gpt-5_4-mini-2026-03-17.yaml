@@ -1,14 +1,14 @@
 wandb:
-  run_name: "openai/gpt-5.4-2026-03-05: high-effort"
+  run_name: "openai/gpt-5.4-mini-2026-03-17: xhigh-effort"
 api: openai_responses # openai, anthropic, google,..
 batch_size: 8
 model:
-  pretrained_model_name_or_path: gpt-5.4-2026-03-05 # if you use openai api, put the name of model
-  bfcl_model_id: "gpt-5.4-2026-03-05-FC"
+  pretrained_model_name_or_path: gpt-5.4-mini-2026-03-17 # if you use openai api, put the name of model
+  bfcl_model_id: "gpt-5.4-mini-2026-03-17-FC"
   base_model: "unknown"
   size_category: api
   size: null
-  release_date: 3/5/2026 # inferred from the dated model id in OpenAI's official docs
+  release_date: 3/17/2026 # format: MM/DD/YYYY
 
 
 generator: # LLM client default configuration: to be overridden by each benchmark
@@ -18,7 +18,7 @@ generator: # LLM client default configuration: to be overridden by each benchmar
     verbosity: medium
   extra_body:
     reasoning:
-      effort: high
+      effort: xhigh
 
 jaster:
   override_max_tokens: 128000 # if null, use value defined in task dataset files
@@ -104,19 +104,3 @@ openai:
     read: 1800.0
     write: 300.0
     pool: 30.0
-
-
-run:
-  bfcl: false
-  swebench: false
-  mtbench: false
-  jbbq: false 
-  toxicity: false
-  jtruthfulqa: false
-  hle: false
-  hallulens: true
-  arc_agi: false
-  m_ifeval: false
-  jaster: false
-  jmmlu_robustness: false # if this is set as true, jaster should set as true  
-  aggregate: true

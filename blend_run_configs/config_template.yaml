@@ -2,6 +2,9 @@ run_chain: false # If you want to reuse past evaluation results in a new run, pl
 
 num_few_shots: 2
 
+download_mode: standard # standard: artifact.download() / sequential: download artifact entries one by one
+download_sleep_sec: 0.05 # Used only when download_mode is sequential
+
 model:
   pretrained_model_name_or_path: "your/model/name/" 
   size_category: "your/model/size/category"

@@ -69,9 +69,10 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
         inference_data["inference_input_log"] = {"messages": message}
 
         function_names = Enum('FuncNames', {func["name"]: func["name"] for func in function})
+        model_name = getattr(self, "model_path_or_id", self.model_name_huggingface)
 
         kwargs = {
-            "model": self.model_path_or_id,
+            "model": model_name,
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
             "timeout": 72000,  # Avoid timeout errors
             **self.generator_config,

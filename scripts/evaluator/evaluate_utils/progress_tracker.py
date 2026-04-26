@@ -1,6 +1,7 @@
 """
 評価ハーネスの進行状況とターミナル出力の美化機能
 """
+import os
 import time
 import wandb
 from typing import Dict, List, Optional, Any
@@ -216,7 +217,10 @@ def complete_benchmark_tracking(benchmark_name: str, results: Optional[Dict[str,
     """ベンチマーク追跡完了"""
     if _global_tracker:
         _global_tracker.complete_benchmark(benchmark_name, results)
-        _global_tracker.show_leaderboard_table(benchmark_name)
+        # W&B Public API への追加 GraphQL アクセスは本体評価に不要で、
+        # ネットワーク不安定時に不要な warning を増やすため既定では無効化する。
+        if os.environ.get("NEJUMI_SHOW_WANDB_LEADERBOARD", "").lower() in {"1", "true", "yes"}:
+            _global_tracker.show_leaderboard_table(benchmark_name)
 
 
 def update_benchmark_progress(progress_percent: int):

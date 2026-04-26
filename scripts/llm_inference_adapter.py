@@ -1,5 +1,6 @@
 import os
 import asyncio
+import ast
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union, Any
@@ -28,6 +29,12 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
+_JSON_CODE_FENCE_RE = re.compile(
+    r"^\s*```(?:json|JSON)?\s*(.*?)\s*```\s*$",
+    re.DOTALL,
+)
+
+
 @dataclass
 class ToolCall:
     name: str
@@ -49,6 +56,196 @@ class LLMResponse:
     tool_calls: Optional[List[ToolCall]] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
+    finish_reason: Optional[str] = None
+    content_was_none: bool = False
+
+
+def _strip_json_code_fence(text: str) -> str:
+    match = _JSON_CODE_FENCE_RE.match(text)
+    return match.group(1).strip() if match else text.strip()
+
+
+def _replace_json_literals_for_python(text: str) -> str:
+    def is_word_char(char: str) -> bool:
+        return char.isalnum() or char == "_"
+
+    result: List[str] = []
+    idx = 0
+    in_string = False
+    quote_char = ""
+    escaped = False
+
+    while idx < len(text):
+        char = text[idx]
+
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote_char:
+                in_string = False
+                quote_char = ""
+            idx += 1
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            quote_char = char
+            result.append(char)
+            idx += 1
+            continue
+
+        replaced = None
+        for json_word, python_word in (
+            ("true", "True"),
+            ("false", "False"),
+            ("null", "None"),
+        ):
+            end_idx = idx + len(json_word)
+            before_ok = idx == 0 or not is_word_char(text[idx - 1])
+            after_ok = end_idx >= len(text) or not is_word_char(text[end_idx])
+            if text.startswith(json_word, idx) and before_ok and after_ok:
+                replaced = python_word
+                idx = end_idx
+                break
+
+        if replaced is not None:
+            result.append(replaced)
+            continue
+
+        result.append(char)
+        idx += 1
+
+    return "".join(result)
+
+
+def _extract_json_like_fragment(text: str) -> str:
+    start_candidates = [pos for pos in (text.find("{"), text.find("[")) if pos != -1]
+    if not start_candidates:
+        return text
+
+    start = min(start_candidates)
+    fragment = text[start:]
+    stack: List[str] = []
+    in_string = False
+    quote_char = ""
+    escaped = False
+
+    for idx, char in enumerate(fragment):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote_char:
+                in_string = False
+                quote_char = ""
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            quote_char = char
+            continue
+
+        if char in "{[":
+            stack.append(char)
+            continue
+
+        if char in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                return fragment[: idx + 1]
+
+    repaired = fragment
+    if in_string and quote_char:
+        repaired += quote_char
+
+    closing_map = {"{": "}", "[": "]"}
+    while stack:
+        repaired += closing_map[stack.pop()]
+
+    return repaired
+
+
+def _normalize_openai_compatible_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Normalize chat messages before sending them to OpenAI-compatible servers.
+
+    Some servers / chat templates assume `content` is always a string and fail on
+    tool-call turns represented as `content=None`. Preserve structure but coerce
+    null content to an empty string.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for message in messages:
+        normalized_message = dict(message)
+        if normalized_message.get("content") is None:
+            normalized_message["content"] = ""
+        normalized.append(normalized_message)
+    return normalized
+
+
+def _repair_common_json_issues(text: str) -> str:
+    repaired = text
+    if repaired.lower().startswith("json"):
+        repaired = repaired[4:].lstrip()
+
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+
+    missing_comma_patterns = (
+        (r'("(?:(?:\\.|[^"\\])*)")\s+(?=")', r"\1, "),
+        (r'("(?:(?:\\.|[^"\\])*)")\s+(?=[\[{\-0-9tfn])', r"\1, "),
+        (r"([}\]0-9])\s+(?=\")", r"\1, "),
+        (r"([}\]0-9])\s+(?=[\[{\-0-9tfn])", r"\1, "),
+        (r"\b(true|false|null)\b\s+(?=\")", r"\1, "),
+        (r"\b(true|false|null)\b\s+(?=[\[{\-0-9tfn])", r"\1, "),
+    )
+
+    for _ in range(3):
+        previous = repaired
+        for pattern, replacement in missing_comma_patterns:
+            repaired = re.sub(pattern, replacement, repaired)
+        if repaired == previous:
+            break
+
+    return repaired
+
+
+def _parse_tool_call_arguments(arguments: Any, *, strict: bool = True) -> Dict[str, Any]:
+    if arguments is None or arguments == "":
+        return {}
+    if isinstance(arguments, dict):
+        return arguments
+    if not isinstance(arguments, str):
+        raise TypeError(f"Unsupported tool call arguments type: {type(arguments).__name__}")
+
+    normalized = _extract_json_like_fragment(_strip_json_code_fence(arguments))
+    repaired = _repair_common_json_issues(normalized)
+    candidates: List[str] = []
+    for candidate in (normalized, repaired):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    last_json_error: Optional[json.JSONDecodeError] = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        except json.JSONDecodeError as exc:
+            last_json_error = exc
+
+        try:
+            parsed = ast.literal_eval(_replace_json_literals_for_python(candidate))
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        except (SyntaxError, ValueError):
+            continue
+
+    if strict and last_json_error is not None:
+        raise last_json_error
+
+    raise json.JSONDecodeError("Unable to parse tool call arguments", arguments, 0)
 
 
 def filter_params(params, allowed_params):
@@ -355,7 +552,8 @@ class OpenAIClient:
             'frequency_penalty', 'logit_bias', 'logprobs', 'max_tokens',
             'n', 'presence_penalty', 'response_format', 'seed', 'stop',
             'stream', 'temperature', 'top_p', 'tools', 'tool_choice',
-            'user', 'extra_body', 'functions', 'function_call'
+            'user', 'extra_body', 'functions', 'function_call',
+            'parallel_tool_calls'
         }
         
         self.param_mapping = {}
@@ -368,7 +566,7 @@ class OpenAIClient:
         
         params = {
             "model": self.model,
-            "messages": messages,
+            "messages": _normalize_openai_compatible_messages(messages),
             **filtered_params
         }
         
@@ -414,8 +612,15 @@ class OpenAIClient:
                 # その他のBadRequestErrorはそのまま再発生
                 raise e
         
-        # reasoningでtokenを使い切るとcontentがNoneになる対策
-        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        # choices が None の場合はプロバイダーエラーとして ConnectionError を発生させリトライ
+        if not response.choices:
+            error_info = getattr(response, 'error', None)
+            raise ConnectionError(f"API returned null/empty choices (provider error: {error_info}). response={response}")
+
+        # reasoningでtokenを使い切るとcontentがNoneになることがあるため、
+        # 下流では空文字で扱いつつ診断用フラグを保持する。
+        content_was_none = response.choices[0].message.content is None
+        content = '' if content_was_none else response.choices[0].message.content
         reasoning_content = ''
         # vLLM reasoning parser output
         if hasattr(response.choices[0].message, 'reasoning_content'):
@@ -431,6 +636,8 @@ class OpenAIClient:
             reasoning_content=reasoning_content,
             reasoning=reasoning_plain,
             reasoning_details=reasoning_details,
+            finish_reason=getattr(response.choices[0], "finish_reason", None),
+            content_was_none=content_was_none,
         )
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
@@ -458,7 +665,7 @@ class OpenAIClient:
         
         params = {
             "model": self.model,
-            "messages": messages,
+            "messages": _normalize_openai_compatible_messages(messages),
             **filtered_params
         }
         
@@ -512,7 +719,7 @@ class OpenAIClient:
             
             # リクエスト時点でpromt+max_tokensがコンテキスト長を超える場合、max_tokensを調整してmax_context_lengthギリギリまで可能な範囲で生成する
             # (OpenAI, vLLMのエラーメッセージに対応)
-            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \(([0-9]+) in the messages, ([0-9]+) in the completion\)", e.message):
+            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \\(([0-9]+) in the messages, ([0-9]+) in the completion\\)", e.message):
                 max_context_length = int(match.group(1))
                 prompt_tokens = int(match.group(2))
                 completion_tokens = int(match.group(3))
@@ -537,8 +744,15 @@ class OpenAIClient:
                 # Token長以外のBadRequestの場合はそのままエラー
                 raise e
 
-        # reasoningでtokenを使い切るとcontentがNoneになる対策
-        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        # choices が None の場合はプロバイダーエラーとして ConnectionError を発生させリトライ
+        if not response.choices:
+            error_info = getattr(response, 'error', None)
+            raise ConnectionError(f"API returned null/empty choices (provider error: {error_info}). response={response}")
+
+        # reasoningでtokenを使い切るとcontentがNoneになることがあるため、
+        # 下流では空文字で扱いつつ診断用フラグを保持する。
+        content_was_none = response.choices[0].message.content is None
+        content = '' if content_was_none else response.choices[0].message.content
         reasoning_content = ''
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
@@ -559,7 +773,9 @@ class OpenAIClient:
             reasoning_content=reasoning_content,
             parsed_output=parsed_output,
             prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens
+            completion_tokens=completion_tokens,
+            finish_reason=getattr(response.choices[0], "finish_reason", None),
+            content_was_none=content_was_none,
         )
 
         # Preserve OpenRouter reasoning blocks if present (used for tool-call continuity)
@@ -569,25 +785,10 @@ class OpenAIClient:
         except Exception:
             pass
 
-        def parse_arguments(arguments: str):
-            """
-            ArgumentsのJSONをパースする
-            OpenRouterなどの一部の互換実装ではValid JSONではなく空文字や最後の}がないケースがあるのでカバーする
-            """
-            if arguments is None or arguments == "":
-                return {}
-            try:
-                return json.loads(arguments)
-            except json.JSONDecodeError as e1:
-                try:
-                    return json.loads(arguments + '}')
-                except json.JSONDecodeError:
-                    raise e1
-
         if tool_calls := response.choices[0].message.tool_calls:
             llm_response.tool_calls = [ToolCall(
                 name=tool_call.function.name,
-                arguments=parse_arguments(tool_call.function.arguments),
+                arguments=_parse_tool_call_arguments(tool_call.function.arguments),
                 id=tool_call.id,
                 type=tool_call.type
             ) for tool_call in tool_calls]
@@ -677,15 +878,11 @@ class OpenAIResponsesClient(BaseLLMClient):
                     arguments_raw = getattr(output, "arguments", None)
                     call_id = getattr(output, "call_id", None)
                     parsed_args = {}
-                    if isinstance(arguments_raw, str) and len(arguments_raw) > 0:
+                    if arguments_raw is not None:
                         try:
-                            parsed_args = json.loads(arguments_raw)
+                            parsed_args = _parse_tool_call_arguments(arguments_raw)
                         except json.JSONDecodeError:
-                            # Try to recover from missing closing brace
-                            try:
-                                parsed_args = json.loads(arguments_raw + "}")
-                            except Exception:
-                                parsed_args = {"_raw": arguments_raw}
+                            parsed_args = {"_raw": arguments_raw}
                     collected_tool_calls.append(ToolCall(name=name or "", arguments=parsed_args, id=str(call_id) if call_id else str(uuid.uuid4()), type="function"))
                 except Exception:
                     pass
@@ -1526,5 +1723,3 @@ def get_llm_inference_engine() -> BaseLLMClient:
         raise ValueError(f"Unsupported API type: {api_type}")
     
     return llm
-
-

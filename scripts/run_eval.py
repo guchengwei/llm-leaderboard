@@ -112,12 +112,16 @@ try:
             config=cfg_dict,
             job_type="evaluation",
             resume="allow" if wandb_run else None,
+            settings=wandb.Settings(init_timeout=300),
         )
         os.environ["NEJUMI_WANDB_INIT_DONE"] = "1"
 except Exception as e:
-    print(f"Warning: Failed to initialize Wandb: {e}")
-    print("Continuing without Wandb logging...")
-    run = None
+    raise SystemExit(
+        "Failed to initialize W&B. W&B is required for this evaluation because "
+        "artifacts, run metadata, and result logging must all be tracked there.\n"
+        f"Original error: {e}\n"
+        "Check your WANDB_API_KEY / login state and verify the target entity/project."
+    ) from e
 
 # Initialize Weave separately so Weave failures don't disable W&B
 if run:
@@ -127,24 +131,16 @@ if run:
         print(f"Warning: Failed to initialize Weave: {e}")
         print("Continuing without Weave...")
 
-# Initialize the WandbConfigSingleton (even when W&B is unavailable)
-if run:
-    WandbConfigSingleton.initialize(run, llm=None)
-    cfg = WandbConfigSingleton.get_instance().config
+WandbConfigSingleton.initialize(run, llm=None)
+cfg = WandbConfigSingleton.get_instance().config
 
-    # Save configuration as artifact
-    artifact = wandb.Artifact("config", type="config")
-    artifact.add_file(custom_cfg_path)
-    run.log_artifact(artifact)
+# Save configuration as artifact
+artifact = wandb.Artifact("config", type="config")
+artifact.add_file(custom_cfg_path)
+run.log_artifact(artifact)
 
-    # Inherit old runs
-    blend_run(run_chain=True)
-else:
-    # W&BなしでもSingletonを初期化して下流コードがcfgにアクセスできるようにする
-    from types import SimpleNamespace
-    offline_run = SimpleNamespace(config=cfg_dict)
-    WandbConfigSingleton.initialize(offline_run, llm=None)
-    cfg = WandbConfigSingleton.get_instance().config
+# Inherit old runs
+blend_run(run_chain=True)
 
 # 有効なベンチマークリストを取得
 enabled_benchmarks = []

@@ -115,11 +115,16 @@ artifacts/
 # config
 configs/config.yaml
 blend_run_configs/blend_config.yaml
+blend_run_configs/_blend_config.yaml
+blend_run_configs/blend_config_temp.yaml
 
 # generated data
 dataset/
 logs/
 fastchat/llm_judge/data/japanese_mt_bench
+hallulens_output_table.table.json
+wandb_export_*.csv
+.codex
 
 # vllm
 *.pid
