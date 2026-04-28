@@ -29,6 +29,14 @@ openai:
     write: 300.0
     pool: 30.0
 
+# xAI個別
+xai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
 # Azure OpenAI個別
 azure_openai:
   http_timeout:

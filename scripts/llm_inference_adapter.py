@@ -527,11 +527,11 @@ class ChatBedrock(BaseLLMClient):
 
 
 class OpenAIClient:
-    def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+    def __init__(self, api_key=None, base_url=None, model=None, timeout_primary_key="openai", **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config if instance else None
-        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
@@ -800,11 +800,11 @@ class OpenAIResponsesClient(BaseLLMClient):
     """
     OpenAIのResponses APIを使用するクライアント(Reasoning対応)
     """
-    def __init__(self, api_key=None, base_url=None, model=None, structured=False, **kwargs):
+    def __init__(self, api_key=None, base_url=None, model=None, structured=False, timeout_primary_key="openai", **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config if instance else None
-        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
@@ -1656,6 +1656,15 @@ def get_llm_inference_engine() -> BaseLLMClient:
             **cfg.generator,
         )
 
+    elif api_type == "xai_responses":
+        llm = OpenAIResponsesClient(
+            api_key=os.environ["XAI_API_KEY"],
+            base_url="https://api.x.ai/v1",
+            model=cfg.model.pretrained_model_name_or_path,
+            timeout_primary_key="xai",
+            **cfg.generator,
+        )
+
     elif api_type in ["openai", "openai_chat"]: # "openai" は後方互換性のため
         llm = OpenAIClient(
             api_key=os.environ["OPENAI_API_KEY"],
@@ -1668,6 +1677,7 @@ def get_llm_inference_engine() -> BaseLLMClient:
             api_key=os.environ["XAI_API_KEY"],
             base_url="https://api.x.ai/v1",
             model=cfg.model.pretrained_model_name_or_path,
+            timeout_primary_key="xai",
             **cfg.generator,
         )
 
