@@ -4,7 +4,7 @@ from typing import Optional
 from ..model_handler.api_inference.claude import ClaudeHandler
 from ..model_handler.api_inference.cohere import CohereHandler
 from ..model_handler.api_inference.databricks import DatabricksHandler
-from ..model_handler.api_inference.deepseek import DeepSeekAPIHandler, DeepSeekV32APIHandler
+from ..model_handler.api_inference.deepseek import DeepSeekAPIHandler, DeepSeekV32APIHandler, DeepSeekV4APIHandler
 #from ..model_handler.api_inference.dm_cito import DMCitoHandler
 from ..model_handler.api_inference.fireworks import FireworksHandler
 from ..model_handler.api_inference.functionary import FunctionaryHandler
@@ -218,6 +218,18 @@ api_inference_model_map = {
         model_handler=DeepSeekAPIHandler,
         input_price=0.28,
         output_price=0.42,
+        is_fc_model=True,
+        underscore_to_dot=True,
+    ),
+    "DeepSeek-V4-Pro-FC": ModelConfig(
+        model_name="DeepSeek-V4-Pro-FC",
+        display_name="DeepSeek-V4-Pro (FC, Thinking)",
+        url="https://api-docs.deepseek.com/news/news260424",
+        org="DeepSeek",
+        license="DeepSeek License",
+        model_handler=DeepSeekV4APIHandler,
+        input_price=0.435,
+        output_price=0.87,
         is_fc_model=True,
         underscore_to_dot=True,
     ),

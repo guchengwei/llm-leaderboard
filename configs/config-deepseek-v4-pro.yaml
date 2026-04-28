@@ -1,0 +1,100 @@
+wandb:
+  run_name: "deepseek/deepseek-v4-pro: thinking-max"
+
+api: deepseek
+base_url: https://api.deepseek.com
+batch_size: 32
+
+model:
+  pretrained_model_name_or_path: deepseek-v4-pro
+  bfcl_model_id: DeepSeek-V4-Pro-FC
+  base_model: "unknown"
+  size_category: api
+  size: 1600000000000
+  release_date: 4/24/2026
+
+generator:
+  # DeepSeek V4 thinking mode ignores sampling controls; null values are omitted by the client.
+  temperature: null
+  top_p: null
+  max_tokens: 384000
+  reasoning_effort: max
+  extra_body:
+    thinking:
+      type: enabled
+
+jaster:
+  override_max_tokens: 384000
+
+jbbq:
+  generator_config:
+    max_tokens: 384000
+
+toxicity:
+  generator_config:
+    max_tokens: 384000
+    temperature: null
+    top_p: null
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 384000
+
+mtbench:
+  max_new_token: 384000
+  generator_config:
+    max_tokens: 384000
+    temperature: null
+    top_p: null
+    reasoning_effort: max
+    extra_body:
+      thinking:
+        type: enabled
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+
+bfcl:
+  generator_config:
+    max_tokens: 384000
+    temperature: null
+    top_p: null
+    reasoning_effort: max
+    extra_body:
+      thinking:
+        type: enabled
+
+hallulens:
+  generator_config:
+    max_tokens: 384000
+    temperature: null
+    top_p: null
+    reasoning_effort: max
+    extra_body:
+      thinking:
+        type: enabled
+
+hle:
+  max_completion_tokens: 384000
+  generator_config:
+    max_tokens: 384000
+    reasoning_effort: max
+    extra_body:
+      thinking:
+        type: enabled
+
+arc_agi:
+  max_output_tokens: 384000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 384000
+
+swebench:
+  max_tokens: 384000

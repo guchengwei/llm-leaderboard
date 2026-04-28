@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import copy
 
 from omegaconf import OmegaConf
 from .openai_completion import OpenAICompletionsHandler
@@ -15,9 +16,30 @@ from openai import OpenAI, RateLimitError
 from overrides import override
 
 try:
-    from scripts.wandb_singleton import WandbConfigSingleton
+    from config_singleton import WandbConfigSingleton
 except ImportError:
     WandbConfigSingleton = None
+
+
+def _to_plain_dict(value):
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    try:
+        return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        return {}
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_dicts(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
 
 
 class DeepSeekAPIHandler(OpenAICompletionsHandler):
@@ -25,8 +47,84 @@ class DeepSeekAPIHandler(OpenAICompletionsHandler):
         super().__init__(model_name, temperature)
         self.model_style = ModelStyle.OpenAI_Completions
         self.client = OpenAI(
-            base_url="https://api.deepseek.com", api_key=os.getenv("OPENAI_COMPATIBLE_API_KEY")
+            base_url="https://api.deepseek.com",
+            api_key=os.getenv("DEEPSEEK_API_KEY")
+            or os.getenv("OPENAI_COMPATIBLE_API_KEY"),
         )
+        self.cfg = self._load_cfg()
+        self.generator_config = self._load_generator_config()
+
+    @staticmethod
+    def _load_cfg():
+        if WandbConfigSingleton is None:
+            return None
+        try:
+            return WandbConfigSingleton.get_instance().config
+        except Exception:
+            return None
+
+    def _load_generator_config(self) -> dict:
+        if self.cfg is None:
+            return {}
+        return _deep_merge_dicts(
+            _to_plain_dict(getattr(self.cfg, "generator", {})),
+            _to_plain_dict(getattr(getattr(self.cfg, "bfcl", {}), "generator_config", {})),
+        )
+
+    def _configured_api_model_name(self) -> str:
+        if self.cfg is not None:
+            try:
+                model_name = str(self.cfg.model.pretrained_model_name_or_path)
+                if model_name in {"deepseek-v4-pro", "deepseek-v4-flash"}:
+                    return model_name
+            except Exception:
+                pass
+
+        if "DeepSeek-V4-Pro" in self.model_name:
+            return "deepseek-v4-pro"
+        if "DeepSeek-V4-Flash" in self.model_name:
+            return "deepseek-v4-flash"
+        if "DeepSeek-V3" in self.model_name:
+            return "deepseek-chat"
+        if "DeepSeek-R1" in self.model_name:
+            return "deepseek-reasoner"
+
+        raise ValueError(f"Model name {self.model_name} not yet supported")
+
+    def _build_generation_kwargs(self, *, include_tools: bool = False, tools=None) -> dict:
+        kwargs = {}
+        for key, value in self.generator_config.items():
+            if value is None:
+                continue
+            if key == "parallel_tool_calls":
+                continue
+            kwargs[key] = value
+
+        if "max_tokens" not in kwargs:
+            kwargs["max_tokens"] = 8192
+
+        thinking_cfg = kwargs.get("extra_body", {}).get("thinking") if isinstance(kwargs.get("extra_body"), dict) else None
+        thinking_enabled = (
+            isinstance(thinking_cfg, dict)
+            and thinking_cfg.get("type", "enabled") == "enabled"
+        )
+        if thinking_enabled:
+            # DeepSeek thinking mode ignores these parameters; omit them to keep requests clean.
+            for key in ("temperature", "top_p", "presence_penalty", "frequency_penalty"):
+                kwargs.pop(key, None)
+        else:
+            kwargs.setdefault("temperature", self.temperature)
+
+        if include_tools and tools:
+            kwargs["tools"] = tools
+
+        return kwargs
+
+    def _add_reasoning_content_if_available(self, api_response: any, response_data: dict) -> None:
+        if "FC" in self.model_name or self.is_fc_model:
+            self._add_reasoning_content_if_available_FC(api_response, response_data)
+        else:
+            self._add_reasoning_content_if_available_prompting(api_response, response_data)
 
     # The deepseek API is unstable at the moment, and will frequently give empty responses, so retry on JSONDecodeError is necessary
     @retry_with_backoff(error_type=[RateLimitError, json.JSONDecodeError])
@@ -52,30 +150,14 @@ class DeepSeekAPIHandler(OpenAICompletionsHandler):
         tools = inference_data["tools"]
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
 
-        # Source https://api-docs.deepseek.com/quick_start/pricing
-        # This will need to be updated if newer models are released.
-        if "DeepSeek-V3" in self.model_name:
-            api_model_name = "deepseek-chat"
-        elif "DeepSeek-R1" in self.model_name:
-            api_model_name = "deepseek-reasoner"
-        else:
-            raise ValueError(
-                f"Model name {self.model_name} not yet supported in this method"
-            )
+        api_model_name = self._configured_api_model_name()
+        kwargs = {
+            "model": api_model_name,
+            "messages": message,
+            **self._build_generation_kwargs(include_tools=True, tools=tools),
+        }
 
-        if len(tools) > 0:
-            return self.generate_with_backoff(
-                model=api_model_name,
-                messages=message,
-                tools=tools,
-                temperature=self.temperature,
-            )
-        else:
-            return self.generate_with_backoff(
-                model=api_model_name,
-                messages=message,
-                temperature=self.temperature,
-            )
+        return self.generate_with_backoff(**kwargs)
 
     @override
     def _query_prompting(self, inference_data: dict):
@@ -91,16 +173,12 @@ class DeepSeekAPIHandler(OpenAICompletionsHandler):
         message: list[dict] = inference_data["message"]
         inference_data["inference_input_log"] = {"message": repr(message)}
 
-        if "DeepSeek-R1" in self.model_name:
-            api_model_name = "deepseek-reasoner"
-        else:
-            raise ValueError(
-                f"Model name {self.model_name} not yet supported in this method"
-            )
+        api_model_name = self._configured_api_model_name()
 
         return self.generate_with_backoff(
             model=api_model_name,
             messages=message,
+            **self._build_generation_kwargs(),
         )
 
     @override
@@ -139,27 +217,8 @@ class DeepSeekV32APIHandler(DeepSeekAPIHandler):
     
     def __init__(self, model_name, temperature) -> None:
         super().__init__(model_name, temperature)
-        self.thinking_param = None
-        
-        # Load reasoning config from WandbConfigSingleton if available
-        if WandbConfigSingleton is not None:
-            try:
-                instance = WandbConfigSingleton.get_instance()
-                cfg = instance.config
-                gen_cfg = getattr(cfg, "generator", {})
-                
-                # OmegaConf.DictConfig を dict に変換
-                if hasattr(OmegaConf, "to_container") and not isinstance(gen_cfg, dict):
-                    gen_cfg = OmegaConf.to_container(gen_cfg)
-                
-                extra_body = gen_cfg.get("extra_body", {}) if isinstance(gen_cfg, dict) else {}
-                # DeepSeek uses 'thinking' parameter
-                thinking = extra_body.get("thinking") if isinstance(extra_body, dict) else None
-                
-                if thinking is not None:
-                    self.thinking_param = thinking
-            except Exception:
-                pass
+        extra_body = self.generator_config.get("extra_body", {})
+        self.thinking_param = extra_body.get("thinking") if isinstance(extra_body, dict) else None
     
     @override
     def _query_FC(self, inference_data: dict):
@@ -167,29 +226,27 @@ class DeepSeekV32APIHandler(DeepSeekAPIHandler):
         tools = inference_data["tools"]
         inference_data["inference_input_log"] = {"message": repr(message), "tools": tools}
         
-        # DeepSeek V3.2 Thinking Mode uses "deepseek-reasoner"
-        # Non-thinking Mode uses "deepseek-chat"
-        # See: https://api-docs.deepseek.com/quick_start/pricing
-        if self.thinking_param is not None:
-            api_model_name = "deepseek-reasoner"
-        else:
-            api_model_name = "deepseek-chat"
-        
+        api_model_name = self._configured_api_model_name()
+        if api_model_name not in {"deepseek-v4-pro", "deepseek-v4-flash"}:
+            # Compatibility aliases used by older DeepSeek configs.
+            api_model_name = "deepseek-reasoner" if self.thinking_param is not None else "deepseek-chat"
+
         kwargs = {
             "model": api_model_name,
             "messages": message,
+            **self._build_generation_kwargs(include_tools=True, tools=tools),
         }
-        
-        if len(tools) > 0:
-            kwargs["tools"] = tools
-        
-        # Add thinking parameter if configured
-        if self.thinking_param is not None:
-            kwargs["extra_body"] = {"thinking": self.thinking_param}
-        
-        # deepseek-reasoner doesn't support temperature parameter
-        # Only add temperature for non-reasoning mode
-        if api_model_name == "deepseek-chat":
-            kwargs["temperature"] = self.temperature
-        
+
         return self.generate_with_backoff(**kwargs)
+
+
+class DeepSeekV4APIHandler(DeepSeekV32APIHandler):
+    """Handler for official DeepSeek V4 API in function-calling thinking mode."""
+
+    @override
+    def _parse_query_response_FC(self, api_response: any) -> dict:
+        response_data = OpenAICompletionsHandler._parse_query_response_FC(self, api_response)
+        message = api_response.choices[0].message
+        if hasattr(message, "reasoning_content") and message.reasoning_content:
+            response_data["reasoning_content"] = message.reasoning_content
+        return response_data
