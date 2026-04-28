@@ -1,4 +1,4 @@
-１# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -125,6 +125,15 @@ fastchat/llm_judge/data/japanese_mt_bench
 hallulens_output_table.table.json
 wandb_export_*.csv
 .codex
+
+# evaluation outputs
+/generation*.jsonl
+/predictions/
+
+# local sandbox runtime data
+/volumes/sandbox/*
+!/volumes/sandbox/dependencies/
+!/volumes/sandbox/dependencies/python-requirements.txt
 
 # vllm
 *.pid

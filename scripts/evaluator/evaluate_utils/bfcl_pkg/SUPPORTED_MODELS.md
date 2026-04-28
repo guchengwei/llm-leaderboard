@@ -95,6 +95,8 @@ These unified handlers eliminate the need to configure individual model-specific
 | GPT-4.5-Preview-2025-02-27                     | Prompt           | OpenAI         | gpt-4.5-preview-2025-02-27                                  |
 | GPT-5.4-2026-03-05                             | Function Calling | OpenAI         | gpt-5.4-2026-03-05-FC                                       |
 | GPT-5.4-2026-03-05                             | Prompt           | OpenAI         | gpt-5.4-2026-03-05                                          |
+| GPT-5.5-2026-04-23                             | Function Calling | OpenAI         | gpt-5.5-2026-04-23-FC                                       |
+| GPT-5.5-2026-04-23                             | Prompt           | OpenAI         | gpt-5.5-2026-04-23                                          |
 | GPT-4o-2024-11-20                              | Function Calling | OpenAI         | gpt-4o-2024-11-20-FC                                        |
 | GPT-4o-2024-11-20                              | Prompt           | OpenAI         | gpt-4o-2024-11-20                                           |
 | GPT-4o-mini-2024-07-18                         | Function Calling | OpenAI         | gpt-4o-mini-2024-07-18-FC                                   |
@@ -106,6 +108,10 @@ These unified handlers eliminate the need to configure individual model-specific
 | Grok-3-beta                                    | Prompt           | xAI            | grok-3-beta                                                 |
 | Grok-3-mini-beta                               | Function Calling | xAI            | grok-3-mini-beta-FC                                         |
 | Grok-3-mini-beta                               | Prompt           | xAI            | grok-3-mini-beta                                            |
+| Grok-4.20-0309-Reasoning                       | Function Calling | xAI            | grok-4.20-0309-reasoning-FC                                 |
+| Grok-4.20-0309-Reasoning                       | Prompt           | xAI            | grok-4.20-0309-reasoning                                    |
+| Grok-4.20-Multi-Agent-0309                     | Function Calling | xAI            | grok-4.20-multi-agent-0309-FC                               |
+| Grok-4.20-Multi-Agent-0309                     | Prompt           | xAI            | grok-4.20-multi-agent-0309                                  |
 | Haha-7B                                        | Prompt           | Self-hosted 💻 | ZJared/Haha-7B                                              |
 | Hammer2.1-{7b,3b,1.5b,0.5b}                    | Function Calling | Self-hosted 💻 | MadeAgents/Hammer2.1-{7b,3b,1.5b,0.5b}                      |
 | Llama-3.1-{8B,70B}-Instruct                    | Function Calling | Self-hosted 💻 | meta-llama/Llama-3.1-{8B,70B}-Instruct-FC                   |
