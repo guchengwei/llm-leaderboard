@@ -58,6 +58,7 @@ These unified handlers eliminate the need to configure individual model-specific
 | DeepSeek-V3-0324                               | Function Calling | DeepSeek       | DeepSeek-V3-0324-FC                                         |
 | DeepSeek-V3-0324                               | Prompt           | Self-hosted 💻 | deepseek-ai/DeepSeek-V3-0324                                |
 | DeepSeek-V3.1                                  | Function Calling | DeepSeek       | DeepSeek-V3.1-FC                                            |
+| DeepSeek-V4-Pro                                | Function Calling | DeepSeek       | DeepSeek-V4-Pro-FC                                          |
 | Falcon3-{1B,3B,7B,10B}-Instruct                | Function Calling | Self-hosted 💻 | tiiuae/Falcon3-{1B,3B,7B,10B}-Instruct                      |
 | FireFunction-v2                                | Function Calling | Fireworks AI   | firefunction-v2-FC                                          |
 | Functionary-{Small,Medium}-v3.1                | Function Calling | MeetKai        | meetkai/functionary-{small,medium}-v3.1-FC                  |

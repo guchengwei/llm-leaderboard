@@ -20,6 +20,7 @@ SUPPORTED_MODELS = [
     "DeepSeek-V3.1-FC",
     "DeepSeek-V3.2-FC",
     "DeepSeek-V3.2-NonThinking-FC",
+    "DeepSeek-V4-Pro-FC",
     "gpt-4.5-preview-2025-02-27",
     "gpt-4.5-preview-2025-02-27-FC",
     "gpt-5.4-2026-03-05-FC",

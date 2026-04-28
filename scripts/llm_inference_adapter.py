@@ -250,7 +250,7 @@ def _parse_tool_call_arguments(arguments: Any, *, strict: bool = True) -> Dict[s
 
 def filter_params(params, allowed_params):
     """許可されたパラメータのみをフィルタリング"""
-    return {k: v for k, v in params.items() if k in allowed_params}
+    return {k: v for k, v in params.items() if k in allowed_params and v is not None}
 
 
 def map_common_params(params, param_mapping):
@@ -553,7 +553,7 @@ class OpenAIClient:
             'n', 'presence_penalty', 'response_format', 'seed', 'stop',
             'stream', 'temperature', 'top_p', 'tools', 'tool_choice',
             'user', 'extra_body', 'functions', 'function_call',
-            'parallel_tool_calls'
+            'parallel_tool_calls', 'reasoning_effort'
         }
         
         self.param_mapping = {}
@@ -1667,6 +1667,17 @@ def get_llm_inference_engine() -> BaseLLMClient:
         llm = OpenAIClient(
             api_key=os.environ["XAI_API_KEY"],
             base_url="https://api.x.ai/v1",
+            model=cfg.model.pretrained_model_name_or_path,
+            **cfg.generator,
+        )
+
+    elif api_type == "deepseek":
+        llm = OpenAIClient(
+            api_key=os.environ.get(
+                "DEEPSEEK_API_KEY",
+                os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
+            ),
+            base_url=cfg.get("base_url", "https://api.deepseek.com"),
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )

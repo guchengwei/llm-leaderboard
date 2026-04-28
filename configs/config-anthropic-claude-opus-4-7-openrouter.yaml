@@ -1,0 +1,84 @@
+wandb:
+  run_name: "anthropic/claude-opus-4.7: adaptive-thinking-xhigh"
+api: openai-compatible # openai, anthropic, google,..
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+model:
+  pretrained_model_name_or_path: anthropic/claude-opus-4.7
+  bfcl_model_id: OpenRouter-FC
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 4/16/2026
+
+generator:
+  # Claude Opus 4.7 rejects/ignores sampling controls; null values are omitted by the client.
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 128000
+  extra_body:
+    # Opus 4.7 only supports adaptive thinking; fixed budget_tokens/max_tokens are ignored or rejected.
+    reasoning:
+      enabled: true
+    # OpenRouter maps this to Anthropic output_config.effort.
+    verbosity: xhigh
+
+jaster:
+  override_max_tokens: 128000
+
+jbbq:
+  generator_config:
+    max_tokens: 128000
+
+toxicity:
+  generator_config:
+    max_tokens: 128000
+    temperature: null
+    top_p: null
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 128000
+
+mtbench:
+  max_new_token: 128000
+  generator_config:
+    max_tokens: 128000
+    temperature: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+
+bfcl:
+  generator_config:
+    max_tokens: 128000
+    temperature: null
+    top_p: null
+
+hallulens:
+  generator_config:
+    max_tokens: 128000
+    temperature: null
+    top_p: null
+
+hle:
+  max_completion_tokens: 128000
+  generator_config:
+    max_tokens: 128000
+
+arc_agi:
+  max_output_tokens: 128000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 128000
+
+swebench:
+  max_tokens: 128000
