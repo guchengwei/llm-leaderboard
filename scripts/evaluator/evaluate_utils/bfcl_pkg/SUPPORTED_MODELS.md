@@ -104,6 +104,9 @@ These unified handlers eliminate the need to configure individual model-specific
 | GPT-4o-mini-2024-07-18                         | Prompt           | OpenAI         | gpt-4o-mini-2024-07-18                                      |
 | OpenAI (Generic Handler)                       | Function Calling | OpenAI         | OpenAI-FC                                                   |
 | OpenRouter (Generic Handler)                   | Function Calling | OpenRouter     | OpenRouter-FC                                               |
+| Qwen3.5 Plus 2026-04-20                        | Function Calling | OpenRouter     | qwen/qwen3.5-plus-20260420-FC                               |
+| Qwen3.6 Plus                                   | Function Calling | OpenRouter     | qwen/qwen3.6-plus-FC                                        |
+| Qwen3.6 Max Preview                            | Function Calling | OpenRouter     | qwen/qwen3.6-max-preview-FC                                 |
 | Granite-20b-FunctionCalling                    | Function Calling | Self-hosted 💻 | ibm-granite/granite-20b-functioncalling                     |
 | Grok-3-beta                                    | Function Calling | xAI            | grok-3-beta-FC                                              |
 | Grok-3-beta                                    | Prompt           | xAI            | grok-3-beta                                                 |
@@ -111,7 +114,6 @@ These unified handlers eliminate the need to configure individual model-specific
 | Grok-3-mini-beta                               | Prompt           | xAI            | grok-3-mini-beta                                            |
 | Grok-4.20-0309-Reasoning                       | Function Calling | xAI            | grok-4.20-0309-reasoning-FC                                 |
 | Grok-4.20-0309-Reasoning                       | Prompt           | xAI            | grok-4.20-0309-reasoning                                    |
-| Grok-4.20-Multi-Agent-0309                     | Function Calling | xAI            | grok-4.20-multi-agent-0309-FC                               |
 | Grok-4.20-Multi-Agent-0309                     | Prompt           | xAI            | grok-4.20-multi-agent-0309                                  |
 | Haha-7B                                        | Prompt           | Self-hosted 💻 | ZJared/Haha-7B                                              |
 | Hammer2.1-{7b,3b,1.5b,0.5b}                    | Function Calling | Self-hosted 💻 | MadeAgents/Hammer2.1-{7b,3b,1.5b,0.5b}                      |

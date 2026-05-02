@@ -4,7 +4,7 @@ api: xai_responses
 batch_size: 4
 model:
   pretrained_model_name_or_path: grok-4.20-multi-agent-0309
-  bfcl_model_id: "grok-4.20-multi-agent-0309-FC"
+  bfcl_model_id: "grok-4.20-multi-agent-0309" # xAI public docs: multi-agent currently does not support client-side/custom tools
   base_model: unknown
   size_category: api
   size: null
@@ -34,7 +34,7 @@ jtruthfulqa:
 
 swebench:
   max_tokens: 64000
-  fc_enabled: true
+  fc_enabled: false # submit_patch function calling is blocked for multi-agent unless client-side tools beta is enabled
 
 mtbench:
   generator_config:

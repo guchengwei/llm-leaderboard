@@ -314,6 +314,8 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
     instance = WandbConfigSingleton.get_instance()
     cfg = instance.config
     fc_enabled = bool(getattr(cfg.swebench, 'fc_enabled', False)) if hasattr(cfg, 'swebench') else False
+    fc_tool_choice = getattr(cfg.swebench, 'fc_tool_choice', 'force') if hasattr(cfg, 'swebench') else 'force'
+    responses_api_types = {"openai_responses", "xai_responses"}
 
     # Predefine tool schema if FC enabled
     submit_patch_tool = None
@@ -321,7 +323,7 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
     if fc_enabled:
         # Choose tool schema based on API family (Responses vs Chat Completions)
         api_type = getattr(cfg, 'api', 'openai')
-        if api_type == 'openai_responses':
+        if api_type in responses_api_types:
             # OpenAI Responses API: tools have top-level name/parameters
             submit_patch_tool = [
                 {
@@ -377,7 +379,9 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
         # Inject tools/tool_choice when FC is enabled
         if fc_enabled and submit_patch_tool is not None:
             api_type = getattr(cfg, 'api', 'openai')
-            if api_type == 'openai_responses':
+            if fc_tool_choice in ("auto", "none", "required"):
+                tool_choice = fc_tool_choice
+            elif api_type in responses_api_types:
                 tool_choice = {"type": "function", "name": "submit_patch"}
             else:
                 tool_choice = {"type": "function", "function": {"name": "submit_patch"}}
@@ -457,6 +461,17 @@ def generate_predictions(samples: List[Dict], llm, generator_config, output_file
             logger.error(f"Error processing {instance_id}: {e}")
             logger.error(traceback.format_exc()) #詳細なトレースバックをログに記録
             continue # 次のサンプルへ
+
+def _to_plain_dict(value) -> Dict:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    try:
+        from omegaconf import OmegaConf
+        return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        return {}
 
 def _api_http_json(method: str, url: str, body_obj=None, headers=None, timeout: float = 300.0):
     """HTTP JSON クライアント（タイムアウト/一時エラーに対してリトライ）"""
@@ -852,7 +867,8 @@ def evaluate():
         max_tokens = cfg.swebench.get("max_tokens", 32768)
         model_name = cfg.model.pretrained_model_name_or_path
         
-        generator_config = {"max_tokens": max_tokens}
+        generator_config = _to_plain_dict(cfg.swebench.get("generator_config", {}))
+        generator_config.setdefault("max_tokens", max_tokens)
         
         # パッチ生成
         generate_predictions(samples, llm, generator_config, predictions_file, model_name)

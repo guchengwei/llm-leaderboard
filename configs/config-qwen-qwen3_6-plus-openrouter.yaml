@@ -1,0 +1,99 @@
+wandb:
+  run_name: "qwen/qwen3.6-plus: openrouter-reasoning"
+api: openai-compatible
+base_url: https://openrouter.ai/api/v1
+batch_size: 16
+
+model:
+  pretrained_model_name_or_path: qwen/qwen3.6-plus
+  bfcl_model_id: "qwen/qwen3.6-plus-FC"
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 4/2/2026
+
+generator:
+  temperature: null
+  top_p: null
+  parallel_tool_calls: true
+  max_tokens: 65536
+  extra_body:
+    reasoning:
+      enabled: true
+    provider:
+      allow_fallbacks: true
+
+jaster:
+  override_max_tokens: 65536
+
+jbbq:
+  generator_config:
+    max_tokens: 65536
+
+toxicity:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65536
+
+swebench:
+  max_tokens: 65536
+  fc_enabled: true
+  fc_tool_choice: auto # Alibaba rejects object/required tool_choice in thinking mode.
+  generator_config:
+    extra_body:
+      reasoning:
+        enabled: true
+      provider:
+        allow_fallbacks: true
+
+mtbench:
+  max_new_token: 65536
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+  temperature_override:
+    writing: null
+    roleplay: null
+    extraction: null
+    math: null
+    coding: null
+    reasoning: null
+    stem: null
+    humanities: null
+
+bfcl:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+
+hallulens:
+  generator_config:
+    max_tokens: 65536
+    temperature: null
+    top_p: null
+
+hle:
+  max_completion_tokens: 65536
+  generator_config:
+    max_tokens: 65536
+
+arc_agi:
+  max_output_tokens: 65536
+
+m_ifeval:
+  generator_config:
+    max_tokens: 65536
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 1800.0
+    write: 300.0
+    pool: 30.0

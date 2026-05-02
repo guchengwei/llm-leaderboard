@@ -63,3 +63,17 @@ xai:
     write: 300.0
     pool: 30.0
 
+run:
+  bfcl: false
+  swebench: true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  hallulens: true
+  arc_agi: true
+  m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  aggregate: true
