@@ -409,7 +409,10 @@ Use only if you want to run directly without `run_with_compose.sh`.
 
 For SWE‑Bench evaluation details and the remote evaluation API server, see:
 - [SWE-bench doc EN](docs/README_swebench.md) / [SWE-bench doc JP](docs/README_swebench_ja.md)
-- [SWE-bench api server doc](scripts/evaluator/evaluate_utils/swebench_pkg/swebench_api_server.md) (API server runbook)
+- **[SWE-bench Server Startup Guide](docs/swebench_server_startup_guide.md)** (完全版立ち上げマニュアル - 実際の問題と解決方法を含む) ⭐ **推奨**
+- [SWE-bench API Quickstart](docs/swebench_api_quickstart.md) (5分クイックスタートガイド)
+- [SWE-bench API Server Setup Guide](docs/swebench_api_server_setup.md) (Cloudflare Tunnel含む詳細ガイド)
+- [SWE-bench api server doc](scripts/evaluator/evaluate_utils/swebench_pkg/swebench_api_server.md) (Original API server runbook)
 
 For BFCL evaluation details, see:
 - [BFCL doc EN](docs/README_bfcl.md) / [BFCL doc JP](docs/README_bfcl_ja.md)

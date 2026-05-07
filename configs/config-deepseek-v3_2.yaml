@@ -1,0 +1,64 @@
+wandb:
+  run_name: "deepseek/DeepSeek-V3.2 (Thinking Mode)"
+
+api: openai-compatible
+base_url: https://api.deepseek.com
+batch_size: 32
+
+model:
+  pretrained_model_name_or_path: deepseek-reasoner
+  bfcl_model_id: DeepSeek-V3.2-FC
+  base_model: "unknown"
+  size_category: api
+  size: 671000000000
+  release_date: 12/1/2025
+
+generator:
+  parallel_tool_calls: true
+  max_tokens: 65536
+  extra_body:
+    thinking:
+      type: enabled
+
+jaster:
+  override_max_tokens: 65536
+
+jbbq:
+  generator_config:
+    max_tokens: 65536
+
+toxicity:
+  generator_config:
+    max_tokens: 65536
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 65536
+
+mtbench:
+  generator_config:
+    max_tokens: 65536
+
+bfcl:
+  generator_config:
+    max_tokens: 65536
+    extra_body:
+      thinking:
+        type: enabled
+
+hallulens:
+  generator_config:
+    max_tokens: 65536
+
+hle:
+  max_completion_tokens: 65536
+
+arc_agi:
+  max_output_tokens: 65536
+
+m_ifeval:
+  generator_config:
+    max_tokens: 65536
+
+swebench:
+  max_tokens: 65536

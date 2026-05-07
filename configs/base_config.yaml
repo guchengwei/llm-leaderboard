@@ -29,6 +29,14 @@ openai:
     write: 300.0
     pool: 30.0
 
+# xAI個別
+xai:
+  http_timeout:
+    connect: 10.0
+    read: 300.0
+    write: 300.0
+    pool: 30.0
+
 # Azure OpenAI個別
 azure_openai:
   http_timeout:
@@ -198,6 +206,16 @@ bfcl:
     temperature: 0.01
     top_p: 1.0
   handler_config:
+    openai_responses:
+      # BFCLのFCモードで既定の tool-calling system prompt を追加するかどうか
+      # OpenAI Responses系モデルで関連タスクにも自然文で答えてしまう場合のみ有効化する
+      inject_bfcl_fc_system_prompt: false
+    unified_oss_fc:
+      # HFのTokenizer/Config取得をスキップするかどうか
+      # 外部vLLM/OpenAI互換サーバーを使う大規模OSSモデルでは true を推奨
+      skip_hf_tokenizer: false
+      # skip_hf_tokenizer=true のときに使う最大文脈長
+      max_context_length_override: null
     unified_oss_jsonschema:
       # ツールの実行結果メッセージにtool callの文字列 tool(arg1=1, arg2=2) を含めるかどうか
       execution_result_include_call_str: true
@@ -219,6 +237,10 @@ hallulens:
   judge:
     model: 'gpt-4.1-2025-04-14'
     parallel: 32
+    # 任意: Hallulens judge用のsystem promptをYAMLから上書きできる
+    system_prompt: null
+    # 任意: placeholders = {name}, {type}, {TYPE}, {place}, {PLACE}, {generation}, {answer}, {prompt}
+    prompt_template: null
     params: {} # Currently using OpenAI's default
 
 hle:

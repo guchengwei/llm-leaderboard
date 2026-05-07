@@ -94,7 +94,6 @@ services:
       - ./blend_run_configs:/workspace/blend_run_configs:ro
       - ./chat_templates:/workspace/chat_templates:ro
       - ${LOCAL_MODEL_PATH:-/tmp/empty}:/workspace/models:ro
-      - ./blend_run_configs:/workspace/blend_run_configs:ro
       
       # Docker socket mount for SWE-bench evaluation
       - /var/run/docker.sock:/var/run/docker.sock
@@ -114,9 +113,9 @@ services:
     networks:
       - default
       - ssrf_proxy_network
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    # DNS は Docker / ホスト既定の resolver を使う。
+    # 固定の public DNS は、環境によってはコンテナ内から到達できず、
+    # W&B など外部 API への断続的な timeout の原因になりうる。
 
   # Dify Sandbox service for secure code execution
   dify-sandbox:

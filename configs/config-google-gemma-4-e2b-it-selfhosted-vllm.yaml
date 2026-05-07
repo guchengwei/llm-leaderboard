@@ -1,0 +1,159 @@
+wandb:
+  run_name: "google/gemma-4-E2B-it"
+
+api: openai-compatible
+base_url: "http://100.89.10.115:8000/v1"
+batch_size: 64
+
+model:
+  use_wandb_artifacts: false
+  # Must match the model name exposed by the vLLM server exactly.
+  pretrained_model_name_or_path: google/gemma-4-E2B-it
+  # SUNK 側は gemma4 parser + auto tool choice で起動しているので
+  # BFCL は JSONSchema prompting ではなく native function calling を使う。
+  bfcl_model_id: "unified-oss-fc"
+  base_model: "gemma-4"
+  size_category: "Small (<10B)"
+  size: 2000000000
+  release_date: 5/20/2025
+
+# Gemma 4 self-hosted on SUNK via vLLM.
+# If your served model name differs from the HF id, update pretrained_model_name_or_path
+# to the exact vLLM-exposed model id.
+generator:
+  # 32768 上限に対して multi-turn 用の余白をしっかり確保する。
+  # まずは 25000 で BFCL / SWE-Bench の長め入力でも詰まりにくくする。
+  max_tokens: 25000
+  temperature: 1.0
+  top_p: 0.95
+  tool_choice: none # BFCL以外で tool call が暴発して content が空になるのを防ぐ
+  extra_body:
+    skip_special_tokens: false
+    chat_template_kwargs:
+      enable_thinking: true
+
+jaster:
+  override_max_tokens: 25000
+
+jbbq:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+toxicity:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+swebench:
+  max_tokens: 25000
+
+mtbench:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+  temperature_override:
+    writing: 1.0
+    roleplay: 1.0
+    extraction: 1.0
+    math: 1.0
+    coding: 1.0
+    reasoning: 1.0
+    stem: 1.0
+    humanities: 1.0
+
+bfcl:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+  handler_config:
+    unified_oss_fc:
+      skip_hf_tokenizer: true
+      # SUNK の vLLM が --max-model-len 32768 で起動している前提に合わせる。
+      max_context_length_override: 32768
+
+hallulens:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+hle:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+arc_agi:
+  max_output_tokens: 25000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      skip_special_tokens: false
+      chat_template_kwargs:
+        enable_thinking: true
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 900.0
+    write: 300.0
+    pool: 30.0
+
+
+run:
+  bfcl: true
+  swebench: true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  hallulens: true
+  arc_agi: true
+  m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true
+  aggregate: true

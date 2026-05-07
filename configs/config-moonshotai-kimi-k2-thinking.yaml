@@ -1,0 +1,57 @@
+wandb:
+  run_name: moonshotai/kimi-k2-thinking
+api: "openai-compatible"
+base_url: "https://openrouter.ai/api/v1"
+batch_size: 32
+model:
+  pretrained_model_name_or_path: moonshotai/kimi-k2-thinking #if you use openai api, put the name of model
+  bfcl_model_id: OpenRouter-FC  # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: "11/06/2025"
+
+generator:
+  max_tokens: 200000
+  extra_body:
+    reasoning:
+      max_tokens: 190000
+
+jaster:
+  override_max_tokens: 200000
+
+jbbq:
+  generator_config:
+    max_tokens: 200000
+
+toxicity:
+  generator_config:
+    max_tokens: 200000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 200000
+
+swebench:
+  max_tokens: 200000
+
+mtbench:
+  max_new_token: 200000
+
+bfcl:
+  generator_config:
+    max_tokens: 200000
+
+hallulens:
+  generator_config:
+    max_tokens: 200000
+
+hle:
+  max_completion_tokens: 200000
+
+arc_agi:
+  max_output_tokens: 200000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 200000

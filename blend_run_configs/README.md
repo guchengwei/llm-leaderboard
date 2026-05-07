@@ -22,6 +22,8 @@ These features are particularly useful in scenarios where you need to combine re
 
 2. The blend_config.yaml requires the following settings:
    - `num_few_shots`: Number of few-shot examples to use.
+   - `download_mode`: `standard` or `sequential`. Use `sequential` if W&B artifact downloads are unstable.
+   - `download_sleep_sec`: Delay between artifact entry downloads when `download_mode: sequential`.
    - `model`: Information about the model.
    - `new_run`: Information for the new run.
    - `old_runs`: Specify the tasks you want to carry over from past runs.
@@ -50,6 +52,8 @@ For detailed information on each setting, please refer to the blender Configurat
 
 2. The blend_config.yaml requires the following settings:
    - `run_chain`: Set to `true`.
+   - `download_mode`: `standard` or `sequential`. Use `sequential` if W&B artifact downloads are unstable.
+   - `download_sleep_sec`: Delay between artifact entry downloads when `download_mode: sequential`.
    - `old_runs`: Specify the tasks you want to carry over from past runs.
 
 For detailed information on each setting, please refer to the blender-configuration-settings.
@@ -74,6 +78,8 @@ For detailed information on each setting, please refer to the blender-configurat
 
 - **run_chain**: Set to `false` to use the blend feature and `true` to use the resume feature.
 - **num_few_shots**: Number of few-shot examples to use.
+- **download_mode**: Artifact download mode for blend/resume. `standard` uses the existing bulk `artifact.download()` flow. `sequential` downloads artifact entries one by one before reconstructing the table.
+- **download_sleep_sec**: Delay inserted between sequential artifact entry downloads. Ignored in `standard` mode.
 - **model**: Information about the model. (No configuration is required to use the resume feature.)
     - `use_wandb_artifacts`: Set to `true` if you want to use W&B artifacts.
     - `pretrained_model_name_or_path`: Name of the VLLM model.

@@ -1,4 +1,4 @@
-１# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -115,11 +115,25 @@ artifacts/
 # config
 configs/config.yaml
 blend_run_configs/blend_config.yaml
+blend_run_configs/_blend_config.yaml
+blend_run_configs/blend_config_temp.yaml
 
 # generated data
 dataset/
 logs/
 fastchat/llm_judge/data/japanese_mt_bench
+hallulens_output_table.table.json
+wandb_export_*.csv
+.codex
+
+# evaluation outputs
+/generation*.jsonl
+/predictions/
+
+# local sandbox runtime data
+/volumes/sandbox/*
+!/volumes/sandbox/dependencies/
+!/volumes/sandbox/dependencies/python-requirements.txt
 
 # vllm
 *.pid
@@ -130,3 +144,5 @@ scripts/evaluator/evaluate_utils/bfcl_pkg/score/
 scripts/evaluator/evaluate_utils/bfcl_pkg/result/
 scripts/evaluator/evaluate_utils/bfcl_pkg/data/
 scripts/evaluator/evaluate_utils/bfcl_pkg/data_jp/
+
+*api*.json

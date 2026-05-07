@@ -26,7 +26,8 @@ done
 # Load .env if exists
 if [[ -f .env ]]; then
   # shellcheck disable=SC2046
-  export $(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | xargs -d'\n') || true
+  # Remove inline comments and export (strip everything after # on each line)
+  export $(grep -E '^[A-Za-z_][A-Za-z0-9_]*=' .env | sed 's/#.*//' | sed 's/[[:space:]]*$//' | xargs -d'\n') || true
 fi
 
 # Ensure myenv python exists

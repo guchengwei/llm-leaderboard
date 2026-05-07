@@ -3,6 +3,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 import json
+import copy
 from ..constants.type_mappings import GORILLA_TO_OPENAPI
 from .base_handler import BaseHandler
 from .model_style import ModelStyle
@@ -20,6 +21,30 @@ from config_singleton import WandbConfigSingleton
 from omegaconf import OmegaConf
 
 
+def _to_plain_dict(value):
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    try:
+        return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        return {}
+
+
+def _deep_merge_dicts(base: dict, override: dict) -> dict:
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _deep_merge_dicts(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
 class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
     def __init__(self, model_name, temperature) -> None:
         # temperatureは後方互換のため残しているがgenerator_configから取るので使用しない
@@ -32,7 +57,10 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config
         self.model_name_huggingface = cfg.model.pretrained_model_name_or_path
-        self.generator_config = OmegaConf.to_container(cfg.bfcl.generator_config)
+        self.generator_config = _deep_merge_dicts(
+            _to_plain_dict(getattr(cfg, "generator", {})),
+            _to_plain_dict(cfg.bfcl.generator_config),
+        )
         self.max_tokens = self.generator_config.pop("max_tokens") # 使用済みTokenに応じて調整するためgenerator_configから取り除く
 
         # Read from env vars with fallbacks
@@ -218,6 +246,19 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
             }
             if api_response.content:
                 assistant_message["content"] = api_response.content
+
+            # OpenRouter reasoning preservation (important for reasoning models + tool use)
+            # See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning
+            reasoning_details = getattr(api_response, "reasoning_details", None)
+            if reasoning_details is not None:
+                assistant_message["reasoning_details"] = reasoning_details
+            # Prefer explicit `reasoning` field if present, otherwise fall back to reasoning_content
+            reasoning_plain = getattr(api_response, "reasoning", None)
+            if reasoning_plain:
+                assistant_message["reasoning"] = reasoning_plain
+            elif getattr(api_response, "reasoning_content", None):
+                assistant_message["reasoning"] = api_response.reasoning_content
+
             response_data["model_responses_message_for_chat_history"] = assistant_message
 
         # If no tool_calls, we still need to strip reasoning_content.
@@ -230,6 +271,9 @@ class OpenAICompatibleHandler(BaseHandler, EnforceOverrides):
         # Capture the reasoning trace so it can be logged to the local result file.
         if api_response.reasoning_content:
             response_data["reasoning_content"] = api_response.reasoning_content
+        # Also capture structured reasoning blocks if present (for debugging / result files)
+        if getattr(api_response, "reasoning_details", None) is not None:
+            response_data["reasoning_details"] = api_response.reasoning_details
 
     #### Prompting methods ####
 

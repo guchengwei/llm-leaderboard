@@ -38,14 +38,23 @@ class GeminiHandler(BaseHandler):
         self.model_style = ModelStyle.GOOGLE
         instance = WandbConfigSingleton.get_instance()
         self.cfg = instance.config
+        # モデル設定上の実際の API モデル名（例: gemini-2.5-pro, gemini-3-pro-preview）
         self.api_model_name = self.cfg.model.pretrained_model_name_or_path
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise ValueError(
                 "GOOGLE_API_KEY environment variable must be set for Gemini models"
             )
-        # Use v1beta API for Gemini 2.5 models (function calling support)
-        http_options = HttpOptions(api_version="v1beta")
+        # API バージョンはモデル世代に応じて切り替える
+        #
+        # - Gemini 2.5 系 : v1beta を利用（従来の thinking_budget / AFC ベース）
+        # - Gemini 3   系 : v1alpha を利用（公式ドキュメントで推奨されている preview エンドポイント）
+        #
+        # 参考: https://ai.google.dev 付属ドキュメント
+        if isinstance(self.api_model_name, str) and self.api_model_name.startswith("gemini-3"):
+            http_options = HttpOptions(api_version="v1alpha")
+        else:
+            http_options = HttpOptions(api_version="v1beta")
         self.client = genai.Client(api_key=api_key, http_options=http_options)
         
         # Completely disable Google GenAI logging
@@ -68,8 +77,10 @@ class GeminiHandler(BaseHandler):
         warnings.filterwarnings("ignore", message=".*function_call.*")
         warnings.filterwarnings("ignore", message=".*thought_signature.*")
 
-        # please set thinking_budget (more than 0 or -1) in config file if you use gemini-2.5-pro
-        self.thinking_budget = getattr(self.cfg.model, 'thinking_budget', 0)
+        # Prefer Gemini 3 thinking_level when provided.
+        # Fallback to thinking_budget for backward compatibility.
+        self.thinking_level = getattr(self.cfg.model, "thinking_level", None)
+        self.thinking_budget = getattr(self.cfg.model, "thinking_budget", 0)
         
 
     @staticmethod
@@ -150,8 +161,30 @@ class GeminiHandler(BaseHandler):
         # Create base config (AFC will be handled by the API defaults)
         config = GenerateContentConfig()
         
-        # Add thinking configuration
-        if self.thinking_budget > 0 or self.thinking_budget == -1:
+        # Add thinking configuration.
+        # Newer SDKs support thinking_level, but older SDKs only accept thinking_budget.
+        level = str(self.thinking_level).strip().lower() if self.thinking_level else None
+        if level:
+            try:
+                config.thinking_config = ThinkingConfig(
+                    include_thoughts=True,
+                    thinking_level=level,
+                )
+            except Exception:
+                # Backward compatibility for environments where thinking_level is unsupported.
+                level_to_budget = {
+                    "minimal": 0,
+                    "low": 1024,
+                    "medium": 8192,
+                    "high": -1,
+                }
+                fallback_budget = level_to_budget.get(level, -1)
+                if fallback_budget != 0:
+                    config.thinking_config = ThinkingConfig(
+                        include_thoughts=True,
+                        thinking_budget=fallback_budget,
+                    )
+        elif self.thinking_budget > 0 or self.thinking_budget == -1:
             config.thinking_config = ThinkingConfig(
                 include_thoughts=True,
                 thinking_budget=self.thinking_budget

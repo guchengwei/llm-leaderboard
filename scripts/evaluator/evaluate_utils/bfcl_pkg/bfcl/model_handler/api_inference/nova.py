@@ -13,6 +13,10 @@ from ..utils import (
     func_doc_language_specific_pre_processing,
     retry_with_backoff,
 )
+try:
+    from config_singleton import WandbConfigSingleton
+except Exception:
+    WandbConfigSingleton = None
 
 
 class NovaHandler(BaseHandler):
@@ -48,6 +52,91 @@ class NovaHandler(BaseHandler):
 
     #### FC methods ####
 
+    def _get_reasoning_config(self):
+        reasoning_cfg = None
+        if WandbConfigSingleton is not None:
+            try:
+                cfg = WandbConfigSingleton.get_instance().config
+                reasoning_cfg = getattr(cfg.model, "reasoning_config", None)
+                if reasoning_cfg is None:
+                    reasoning_cfg = getattr(cfg.model, "reasoningConfig", None)
+            except Exception:
+                reasoning_cfg = None
+
+        if reasoning_cfg is None:
+            env_type = os.getenv("NOVA_REASONING_TYPE")
+            env_effort = os.getenv("NOVA_MAX_REASONING_EFFORT") or os.getenv("NOVA_REASONING_EFFORT")
+            if env_type or env_effort:
+                reasoning_cfg = {"type": env_type or "enabled"}
+                if env_effort:
+                    reasoning_cfg["max_reasoning_effort"] = env_effort
+
+        if reasoning_cfg is None:
+            return None
+
+        try:
+            if isinstance(reasoning_cfg, dict):
+                raw = reasoning_cfg
+            elif hasattr(reasoning_cfg, "items"):
+                raw = {key: reasoning_cfg[key] for key in reasoning_cfg}
+            else:
+                return None
+        except Exception:
+            return None
+
+        normalized: dict[str, str] = {}
+        if "type" in raw and raw["type"] is not None:
+            normalized["type"] = str(raw["type"])
+        elif "enabled" in raw:
+            normalized["type"] = "enabled" if raw["enabled"] else "disabled"
+
+        if "maxReasoningEffort" in raw and raw["maxReasoningEffort"] is not None:
+            normalized["maxReasoningEffort"] = str(raw["maxReasoningEffort"])
+        elif "max_reasoning_effort" in raw and raw["max_reasoning_effort"] is not None:
+            normalized["maxReasoningEffort"] = str(raw["max_reasoning_effort"])
+
+        if normalized.get("type") == "enabled" or "maxReasoningEffort" in normalized:
+            return normalized
+
+        return None
+
+    def _get_max_tokens(self):
+        if WandbConfigSingleton is None:
+            return None
+
+        try:
+            cfg = WandbConfigSingleton.get_instance().config
+            model_cfg = getattr(cfg, "model", None)
+        except Exception:
+            return None
+
+        if model_cfg is None:
+            return None
+
+        max_tokens = None
+        for key in ("max_tokens", "maxTokens", "max_output_tokens", "maxOutputTokens"):
+            try:
+                if hasattr(model_cfg, "get"):
+                    value = model_cfg.get(key)
+                else:
+                    value = getattr(model_cfg, key, None)
+            except Exception:
+                value = None
+
+            if value is not None:
+                max_tokens = value
+                break
+
+        if max_tokens is None:
+            return None
+
+        try:
+            max_tokens = int(max_tokens)
+        except Exception:
+            return None
+
+        return max_tokens if max_tokens > 0 else None
+
     def _query_FC(self, inference_data: dict):
         message: list[dict] = inference_data["message"]
         tools = inference_data["tools"]
@@ -63,22 +152,34 @@ class NovaHandler(BaseHandler):
             "system_prompt": system_prompt,
         }
 
+        reasoning_config = self._get_reasoning_config()
+        inference_config = {"temperature": self.temperature}
+        max_tokens = self._get_max_tokens()
+        if max_tokens is not None:
+            inference_config["maxTokens"] = max_tokens
+        if (
+            reasoning_config
+            and reasoning_config.get("maxReasoningEffort", "").lower() == "high"
+        ):
+            inference_config.pop("temperature", None)
+            inference_config.pop("maxTokens", None)
+
+        request_kwargs = {
+            "modelId": f"us.amazon.{self.model_name.replace('.', ':')}",
+            "messages": message,
+            "system": system_prompt,
+        }
+        if inference_config:
+            request_kwargs["inferenceConfig"] = inference_config
+        if reasoning_config:
+            request_kwargs["additionalModelRequestFields"] = {
+                "reasoningConfig": reasoning_config
+            }
         if len(tools) > 0:
             # toolConfig requires minimum number of 1 item.
-            return self.generate_with_backoff(
-                modelId=f"us.amazon.{self.model_name.replace('.', ':')}",
-                messages=message,
-                system=system_prompt,
-                inferenceConfig={"temperature": self.temperature},
-                toolConfig={"tools": tools},
-            )
-        else:
-            return self.generate_with_backoff(
-                modelId=f"us.amazon.{self.model_name.replace('.', ':')}",
-                messages=message,
-                system=system_prompt,
-                inferenceConfig={"temperature": self.temperature},
-            )
+            request_kwargs["toolConfig"] = {"tools": tools}
+
+        return self.generate_with_backoff(**request_kwargs)
 
     def _pre_query_processing_FC(self, inference_data: dict, test_entry: dict) -> dict:
         for round_idx in range(len(test_entry["question"])):
@@ -109,6 +210,17 @@ class NovaHandler(BaseHandler):
         # Defensive parsing to tolerate missing fields from provider
         model_responses_message_for_chat_history = api_response.get("output", {}).get("message")
         stop_reason = api_response.get("stopReason")
+        reasoning_content = ""
+        content_list = (model_responses_message_for_chat_history or {}).get("content") or []
+        for content_item in content_list:
+            if "reasoningContent" in content_item:
+                reasoning_text = (
+                    content_item.get("reasoningContent", {})
+                    .get("reasoningText", {})
+                    .get("text", "")
+                )
+                if reasoning_text:
+                    reasoning_content += reasoning_text
 
         if stop_reason == "tool_use" and model_responses_message_for_chat_history:
             model_responses: list = []
@@ -133,7 +245,7 @@ class NovaHandler(BaseHandler):
                 }
             },
             """
-            for func_call in (model_responses_message_for_chat_history.get("content") or []):
+            for func_call in content_list:
                 if "toolUse" not in func_call:
                     continue
 
@@ -152,13 +264,16 @@ class NovaHandler(BaseHandler):
                 model_responses = ""
             tool_call_ids = []
 
-        return {
+        response_data = {
             "model_responses": model_responses,
             "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
             "tool_call_ids": tool_call_ids,
             "input_token": api_response.get("usage", {}).get("inputTokens", 0),
             "output_token": api_response.get("usage", {}).get("outputTokens", 0),
         }
+        if reasoning_content:
+            response_data["reasoning_content"] = reasoning_content
+        return response_data
 
     def add_first_turn_message_FC(
         self, inference_data: dict, first_turn_message: list[dict]

@@ -25,13 +25,17 @@ If you decide to invoke any of the function(s), you MUST put it in the format of
 ```json
 {{
     "function_calls": [
-        {{"function": "{{func_name1}}", "arguments": {{"{{params_name1}}": {{params_value1}}, "{{params_name2}}": {{params_value2}}, ...}},
-        {{"function": "{{func_name2}}", "arguments": {{"{{params_name1}}": {{params_value1}}, "{{params_name2}}": {{params_value2}}, ...}},
-        ...
+        {{
+            "function": "function_name",
+            "arguments": {{
+                "parameter_name": "parameter_value"
+            }}
+        }}
     ],
-    "unavailable_reason": "Reason why you cannot invoke any of the functions or lack of parameters."
+    "unavailable_reason": ""
 }}
 ```
+Replace `function_name`, `parameter_name`, and `parameter_value` with actual values from the provided function list and user request. If no function can be invoked, return an empty `function_calls` list and a brief `unavailable_reason`.
 You SHOULD NOT include any other text in the response.
 
 At each turn, you should try your best to complete the tasks requested by the user within the current turn. Continue to output functions to call until you have fulfilled the user's request to the best of your ability. Once you have no more functions to call, the system will consider the current turn complete and proceed to the next turn or task.

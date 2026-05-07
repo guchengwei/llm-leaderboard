@@ -99,8 +99,9 @@ def read_wandb_table_throttled(
         with table_json_path.open("r") as f:
             tjs = json.load(f)
 
-    # DataFrame化（Media実体はローカルに順次ダウン済み）
-    output_df = pd.DataFrame(data=tjs.get("data", []), columns=tjs.get("columns", []))
+    # 通常経路と同じく wandb.Table を経由して復元し、画像などのセル型も保つ。
+    output_table = wandb.Table.from_json(json_obj=tjs, source_artifact=artifact)
+    output_df = pd.DataFrame(data=output_table.data, columns=output_table.columns)
     print(f"[blend] Completed: {artifact_path}")
     return output_df
 

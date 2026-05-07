@@ -1,0 +1,33 @@
+wandb:
+  run_name: Qwen/Qwen3-Next-80B-A3B-Instruct
+api: openai-compatible # openai, anthropic, google,..
+base_url: "http://100.71.255.22:8000/v1"
+batch_size: 32
+model:
+  pretrained_model_name_or_path: Qwen/Qwen3-Next-80B-A3B-Instruct #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-jsonschema" # find id from "llm-leaderboard/scripts/evaluator/evaluate_utils/bfcl_pkg/SUPPORTED_MODELS.md"
+  base_model: "unknown"
+  size_category: "Large (30B+)"
+  size: 80000000000
+  release_date: 9/5/2025
+
+bfcl:
+  handler_config:
+    unified_oss_jsonschema:
+      skip_hf_tokenizer: true
+      max_context_length_override: 131072
+
+run:
+  bfcl: false
+  swebench: false
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  aggregate: true

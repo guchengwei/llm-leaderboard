@@ -25,6 +25,19 @@ from .evaluate_utils import (
     evaluate_robustness,
 )
 
+
+def _to_plain_dict(value) -> dict:
+    if value is None:
+        return {}
+    try:
+        from omegaconf import OmegaConf
+        if not isinstance(value, dict):
+            return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        pass
+    return dict(value)
+
+
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -157,7 +170,8 @@ def evaluate_n_shot(few_shots: bool):
                 )
                 
                 # Add inputs only once per sample (for LLM processing)
-                generator_config = {"max_tokens": cfg.jaster.override_max_tokens or task_data["output_length"]}
+                generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
+                generator_config["max_tokens"] = cfg.jaster.override_max_tokens or task_data["output_length"]
                 inputs.extend([messages, generator_config])
                 
                 for metrics in metrics_list:
@@ -181,6 +195,15 @@ def evaluate_n_shot(few_shots: bool):
                             "control_method": control_method,
                             "control_func": control_func,
                             "score": None,  # to be filled
+                            "task_output_length": task_data["output_length"],
+                            "requested_max_tokens": generator_config["max_tokens"],
+                            "prompt_tokens": None,
+                            "completion_tokens": None,
+                            "finish_reason": None,
+                            "content_was_none": None,
+                            "reasoning_content_len": None,
+                            "reasoning_content_preview": None,
+                            "raw_output_is_empty": None,
                             "inputs": inputs,
                         }
                     )
@@ -268,6 +291,13 @@ def evaluate_n_shot(few_shots: bool):
         evaluation_result["output"] = y_pred
         evaluation_result["score"] = score
         evaluation_result["control_score"] = control_score
+        evaluation_result["prompt_tokens"] = response.prompt_tokens
+        evaluation_result["completion_tokens"] = response.completion_tokens
+        evaluation_result["finish_reason"] = response.finish_reason
+        evaluation_result["content_was_none"] = response.content_was_none
+        evaluation_result["reasoning_content_len"] = len(response.reasoning_content or "")
+        evaluation_result["reasoning_content_preview"] = (response.reasoning_content or "")[:200]
+        evaluation_result["raw_output_is_empty"] = (raw_output == "")
         del evaluation_result["metrics_func"], evaluation_result["control_func"], evaluation_result["inputs"]
         
     # Handle all tasks uniformly
@@ -303,6 +333,9 @@ def evaluate_n_shot(few_shots: bool):
         # Reorder columns for jhumaneval tables
         new_order=["model_name","task","index","input","raw_output","output","expected_output",
                    "prompt","score","control_score","metrics","control_method",
+                   "task_output_length","requested_max_tokens","prompt_tokens","completion_tokens",
+                   "finish_reason","content_was_none","reasoning_content_len","reasoning_content_preview",
+                   "raw_output_is_empty",
                    "dataset","num_few_shots","subset","sub_category"]
         jhumaneval_dev_table = jhumaneval_dev_table[new_order]
         jhumaneval_test_table = jhumaneval_test_table[new_order]
@@ -347,6 +380,9 @@ def evaluate_n_shot(few_shots: bool):
         
         new_order=["model_name","task","index","input","raw_output","output","expected_output",
                    "prompt","score","control_score","metrics","control_method",
+                   "task_output_length","requested_max_tokens","prompt_tokens","completion_tokens",
+                   "finish_reason","content_was_none","reasoning_content_len","reasoning_content_preview",
+                   "raw_output_is_empty",
                    "dataset","num_few_shots","subset","sub_category"]
         dev_table = dev_table[new_order]
         test_table = test_table[new_order]

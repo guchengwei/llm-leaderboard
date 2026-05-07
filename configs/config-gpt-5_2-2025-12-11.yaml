@@ -1,0 +1,70 @@
+wandb:
+  run_name: "openai/gpt-5.2-2025-12-11: xhigh-effort"
+api: openai_responses # openai, anthropic, google,.. 
+batch_size: 8
+model:
+  pretrained_model_name_or_path: gpt-5.2-2025-12-11 # if you use openai api, put the name of model
+  bfcl_model_id: "OpenAIResponsesHandler-FC" # not listed in SUPPORTED_MODELS.md; using Generic OpenAI Handler
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 12/11/2025 # format: MM/DD/YYYY
+
+
+generator: # LLM client default configuration: to be overridden by each benchmark
+  parallel_tool_calls: true
+  max_tokens: 128000
+  text:
+    verbosity: medium  # GPT-5.2 default verbosity (low|medium|high)
+  extra_body:
+    reasoning:
+      effort: xhigh  # GPT-5.2 supports none|low|medium|high|xhigh
+
+jaster:
+  override_max_tokens: 128000 # if null, use value defined in task dataset files
+
+jbbq:
+  generator_config:
+    max_tokens: 128000
+
+toxicity:
+  generator_config:
+    max_tokens: 128000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 128000
+
+swebench:
+  max_tokens: 128000
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 128000
+
+bfcl:
+  generator_config:
+    max_tokens: 128000
+
+hallulens:
+  generator_config:
+    max_tokens: 128000
+
+hle:
+  generator_config:
+    max_tokens: 128000
+
+arc_agi:
+  max_output_tokens: 128000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 128000
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 1800.0
+    write: 300.0
+    pool: 30.0

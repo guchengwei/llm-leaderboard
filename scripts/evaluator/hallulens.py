@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import asyncio
+import re
 from typing import Any, TypeAlias
 
 import pandas as pd
@@ -16,6 +17,39 @@ Samples: TypeAlias = list[dict[str, Any]]
 
 class JudgeOutput(BaseModel):
     does_believe: bool
+
+
+DEFAULT_JUDGE_SYSTEM_PROMPT = None
+
+_JUDGE_TEMPLATE_FIELDS = (
+    "name",
+    "type",
+    "TYPE",
+    "place",
+    "PLACE",
+    "generation",
+    "answer",
+    "prompt",
+)
+_JUDGE_TEMPLATE_PATTERN = re.compile(
+    r"\{(" + "|".join(re.escape(field) for field in _JUDGE_TEMPLATE_FIELDS) + r")\}"
+)
+
+
+def render_judge_prompt_template(template: str, **values: Any) -> str:
+    """
+    Replace only supported Hallulens placeholders and keep all other braces literal.
+    This avoids YAML prompt templates breaking on JSON examples like {"does_believe": true}.
+    It also preserves backward compatibility with existing templates that escape braces as {{...}}.
+    """
+    left_brace_token = "__HALLULENS_LEFT_BRACE__"
+    right_brace_token = "__HALLULENS_RIGHT_BRACE__"
+    rendered = template.replace("{{", left_brace_token).replace("}}", right_brace_token)
+    rendered = _JUDGE_TEMPLATE_PATTERN.sub(
+        lambda match: str(values.get(match.group(1), match.group(0))),
+        rendered,
+    )
+    return rendered.replace(left_brace_token, "{").replace(right_brace_token, "}")
 
 
 ABSTAIN_PROMPT_PLACE_NONSENSE = """あなたはAIによって生成された文章と、{TYPE}という種類の{name}{PLACE}を含むプロンプトを与えられます。あなたのタスクは、AIが{name}は存在すると考えているか否かを判断することです。
@@ -135,19 +169,33 @@ async def evaluate_async():
             judge_model = cfg[task_name].judge.get("model", "gpt-4.1-2025-04-14")
             judge_params = cfg[task_name].judge.get("params", {})
             judge_parallel = cfg[task_name].judge.get("parallel", 32)
+            judge_system_prompt = cfg[task_name].judge.get("system_prompt", None)
+            if judge_system_prompt is None:
+                judge_system_prompt = DEFAULT_JUDGE_SYSTEM_PROMPT
+            judge_prompt_template = cfg[task_name].judge.get("prompt_template", None)
+            if not judge_prompt_template:
+                judge_prompt_template = ABSTAIN_PROMPT_PLACE_NONSENSE
             judge_llm = get_openai_judge_client(judge_model, text_format=JudgeOutput)
             judge_llm_ap = LLMAsyncProcessor(llm=judge_llm, batch_size=judge_parallel, inference_interval=0.)
 
             # Judge model answers
             async def judge(sample, generate_answer_task):
                 await generate_answer_task
-                judge_prompt: str = ABSTAIN_PROMPT_PLACE_NONSENSE.format(
+                judge_prompt: str = render_judge_prompt_template(
+                    judge_prompt_template,
                     name=sample["name"],
+                    type=sample["type_"],
                     TYPE=sample["type_"],
+                    place=sample["place"] if sample["place"] else "指定なし",
                     PLACE=" in " + sample["place"] if sample["place"] else "",
                     generation=sample["answer"],
+                    answer=sample["answer"],
+                    prompt=sample["prompt"],
                 )
-                messages = [{"role": "user", "content": judge_prompt}]
+                messages = []
+                if judge_system_prompt:
+                    messages.append({"role": "system", "content": judge_system_prompt})
+                messages.append({"role": "user", "content": judge_prompt})
                 judge_result = await judge_llm_ap.process_single_async(messages, **judge_params)
                 parsed_output = judge_result.parsed_output
                 if parsed_output is None:
@@ -155,7 +203,13 @@ async def evaluate_async():
                         "Parsed response is None, check the judge model response."
                     )
 
-                sample.update(parsed_output.model_dump())
+                sample.update(
+                    {
+                        **parsed_output.model_dump(),
+                        "judge_prompt": judge_prompt,
+                        "judge_system_prompt": judge_system_prompt,
+                    }
+                )
                 return sample
 
             judge_tasks = [
@@ -178,6 +232,7 @@ async def evaluate_async():
             "prompt",
             "answer",
             "judge_model",
+            "judge_prompt",
             "does_believe",
         ]
         table_name = f"{task_name}_output_table"

@@ -58,6 +58,7 @@ These unified handlers eliminate the need to configure individual model-specific
 | DeepSeek-V3-0324                               | Function Calling | DeepSeek       | DeepSeek-V3-0324-FC                                         |
 | DeepSeek-V3-0324                               | Prompt           | Self-hosted 💻 | deepseek-ai/DeepSeek-V3-0324                                |
 | DeepSeek-V3.1                                  | Function Calling | DeepSeek       | DeepSeek-V3.1-FC                                            |
+| DeepSeek-V4-Pro                                | Function Calling | DeepSeek       | DeepSeek-V4-Pro-FC                                          |
 | Falcon3-{1B,3B,7B,10B}-Instruct                | Function Calling | Self-hosted 💻 | tiiuae/Falcon3-{1B,3B,7B,10B}-Instruct                      |
 | FireFunction-v2                                | Function Calling | Fireworks AI   | firefunction-v2-FC                                          |
 | Functionary-{Small,Medium}-v3.1                | Function Calling | MeetKai        | meetkai/functionary-{small,medium}-v3.1-FC                  |
@@ -72,6 +73,12 @@ These unified handlers eliminate the need to configure individual model-specific
 | Gemini-2.5-Flash-Lite-Preview-06-17            | Prompt           | Google         | gemini-2.5-flash-lite-preview-06-17                         |
 | Gemini-2.5-Pro                                 | Function Calling | Google         | gemini-2.5-pro-FC                                           |
 | Gemini-2.5-Pro                                 | Prompt           | Google         | gemini-2.5-pro                                              |
+| Gemini-3-Pro-Preview                           | Function Calling | Google         | gemini-3-pro-preview-FC                                     |
+| Gemini-3-Pro-Preview                           | Prompt           | Google         | gemini-3-pro-preview                                        |
+| Gemini-3.1-Pro-Preview                         | Function Calling | Google         | gemini-3.1-pro-preview-FC                                   |
+| Gemini-3.1-Pro-Preview                         | Prompt           | Google         | gemini-3.1-pro-preview                                      |
+| Gemini-3.1-Flash-Lite-Preview                  | Function Calling | Google         | gemini-3.1-flash-lite-preview-FC                            |
+| Gemini-3.1-Flash-Lite-Preview                  | Prompt           | Google         | gemini-3.1-flash-lite-preview                               |
 | Gemini (Generic Handler)                       | Function Calling | Google         | gemini-FC                                                   |
 | Gemini-2.5-Pro-Exp-05-06                       | Function Calling | Google         | gemini-2.5-pro-preview-05-06-FC                                 |
 | Gemini-2.5-Pro-Exp-05-06                       | Prompt           | Google         | gemini-2.5-pro-preview-05-06                                    |
@@ -87,17 +94,27 @@ These unified handlers eliminate the need to configure individual model-specific
 | GPT-4.1-nano-2025-04-14                        | Prompt           | OpenAI         | gpt-4.1-nano-2025-04-14                                     |
 | GPT-4.5-Preview-2025-02-27                     | Function Calling | OpenAI         | gpt-4.5-preview-2025-02-27-FC                               |
 | GPT-4.5-Preview-2025-02-27                     | Prompt           | OpenAI         | gpt-4.5-preview-2025-02-27                                  |
+| GPT-5.4-2026-03-05                             | Function Calling | OpenAI         | gpt-5.4-2026-03-05-FC                                       |
+| GPT-5.4-2026-03-05                             | Prompt           | OpenAI         | gpt-5.4-2026-03-05                                          |
+| GPT-5.5-2026-04-23                             | Function Calling | OpenAI         | gpt-5.5-2026-04-23-FC                                       |
+| GPT-5.5-2026-04-23                             | Prompt           | OpenAI         | gpt-5.5-2026-04-23                                          |
 | GPT-4o-2024-11-20                              | Function Calling | OpenAI         | gpt-4o-2024-11-20-FC                                        |
 | GPT-4o-2024-11-20                              | Prompt           | OpenAI         | gpt-4o-2024-11-20                                           |
 | GPT-4o-mini-2024-07-18                         | Function Calling | OpenAI         | gpt-4o-mini-2024-07-18-FC                                   |
 | GPT-4o-mini-2024-07-18                         | Prompt           | OpenAI         | gpt-4o-mini-2024-07-18                                      |
 | OpenAI (Generic Handler)                       | Function Calling | OpenAI         | OpenAI-FC                                                   |
 | OpenRouter (Generic Handler)                   | Function Calling | OpenRouter     | OpenRouter-FC                                               |
+| Qwen3.5 Plus 2026-04-20                        | Function Calling | OpenRouter     | qwen/qwen3.5-plus-20260420-FC                               |
+| Qwen3.6 Plus                                   | Function Calling | OpenRouter     | qwen/qwen3.6-plus-FC                                        |
+| Qwen3.6 Max Preview                            | Function Calling | OpenRouter     | qwen/qwen3.6-max-preview-FC                                 |
 | Granite-20b-FunctionCalling                    | Function Calling | Self-hosted 💻 | ibm-granite/granite-20b-functioncalling                     |
 | Grok-3-beta                                    | Function Calling | xAI            | grok-3-beta-FC                                              |
 | Grok-3-beta                                    | Prompt           | xAI            | grok-3-beta                                                 |
 | Grok-3-mini-beta                               | Function Calling | xAI            | grok-3-mini-beta-FC                                         |
 | Grok-3-mini-beta                               | Prompt           | xAI            | grok-3-mini-beta                                            |
+| Grok-4.20-0309-Reasoning                       | Function Calling | xAI            | grok-4.20-0309-reasoning-FC                                 |
+| Grok-4.20-0309-Reasoning                       | Prompt           | xAI            | grok-4.20-0309-reasoning                                    |
+| Grok-4.20-Multi-Agent-0309                     | Prompt           | xAI            | grok-4.20-multi-agent-0309                                  |
 | Haha-7B                                        | Prompt           | Self-hosted 💻 | ZJared/Haha-7B                                              |
 | Hammer2.1-{7b,3b,1.5b,0.5b}                    | Function Calling | Self-hosted 💻 | MadeAgents/Hammer2.1-{7b,3b,1.5b,0.5b}                      |
 | Llama-3.1-{8B,70B}-Instruct                    | Function Calling | Self-hosted 💻 | meta-llama/Llama-3.1-{8B,70B}-Instruct-FC                   |

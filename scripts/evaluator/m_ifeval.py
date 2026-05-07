@@ -23,6 +23,19 @@ from .evaluate_utils import (
     LLMAsyncProcessor,
 )
 
+
+def _to_plain_dict(value) -> dict:
+    if value is None:
+        return {}
+    try:
+        from omegaconf import OmegaConf
+        if not isinstance(value, dict):
+            return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        pass
+    return dict(value)
+
+
 def evaluate_m_ifeval(input_data, output_data):
     """M-IFEval結果を評価します。"""
     
@@ -104,52 +117,9 @@ def evaluate():
         # メッセージ形式に変換
         messages = [{"role": "user", "content": prompt}]
 
-        # generator config設定（YAML優先: m_ifeval.generator_config.max_tokens → generator.max_tokens → 2048）
-        max_tokens_value = 2048
-        try:
-            # 優先1: m_ifeval.generator_config.max_tokens
-            m_ifeval_cfg = getattr(cfg, "m_ifeval", None)
-            gen_cfg = None
-            if m_ifeval_cfg is not None:
-                # OmegaConfの可能性を考慮
-                try:
-                    gen_cfg = getattr(m_ifeval_cfg, "generator_config", None)
-                except Exception:
-                    gen_cfg = None
-                # 必要に応じて辞書へ変換
-                try:
-                    from omegaconf import OmegaConf  # type: ignore
-                    if gen_cfg is not None and not isinstance(gen_cfg, dict):
-                        gen_cfg = OmegaConf.to_container(gen_cfg)
-                except Exception:
-                    pass
-                if isinstance(gen_cfg, dict) and "max_tokens" in gen_cfg:
-                    max_tokens_value = int(gen_cfg["max_tokens"])
-                else:
-                    # 優先2: generator.max_tokens（グローバル既定）
-                    try:
-                        generator_cfg = getattr(cfg, "generator", None)
-                        if generator_cfg is not None:
-                            default_mt = getattr(generator_cfg, "max_tokens", None)
-                            if default_mt is not None:
-                                max_tokens_value = int(default_mt)
-                    except Exception:
-                        pass
-            else:
-                # m_ifevalセクションがない場合は generator.max_tokens を参照
-                try:
-                    generator_cfg = getattr(cfg, "generator", None)
-                    if generator_cfg is not None:
-                        default_mt = getattr(generator_cfg, "max_tokens", None)
-                        if default_mt is not None:
-                            max_tokens_value = int(default_mt)
-                except Exception:
-                    pass
-        except Exception:
-            # 何か問題があれば最終フォールバック
-            max_tokens_value = 2048
-
-        generator_config = {"max_tokens": max_tokens_value}
+        generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
+        generator_config.update(_to_plain_dict(getattr(getattr(cfg, "m_ifeval", {}), "generator_config", {})))
+        generator_config["max_tokens"] = int(generator_config.get("max_tokens", 2048))
 
         inputs = [messages, generator_config]
         

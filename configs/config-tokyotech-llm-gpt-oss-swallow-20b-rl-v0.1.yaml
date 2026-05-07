@@ -1,0 +1,182 @@
+wandb:
+  run_name: "tokyotech-llm/GPT-OSS-Swallow-20B-RL-v0.1"
+
+api: openai-compatible
+base_url: "http://100.91.253.111:8000/v1"
+num_gpus: 1
+batch_size: 16
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "tokyotech-llm/GPT-OSS-Swallow-20B-RL-v0.1"
+  # The model card says function calling is not specifically trained/tested.
+  # Use guided JSONSchema prompting for BFCL instead of native FC/tool parsing.
+  bfcl_model_id: "unified-oss-jsonschema"
+  base_model: "tokyotech-llm/GPT-OSS-Swallow-20B-SFT-v0.1"
+  size_category: "Medium (10–30B)"
+  size: 20914800000
+  release_date: 2/20/2026
+
+vllm:
+  # In openai-compatible mode these values document the required SUNK vLLM launch settings.
+  # They are not applied automatically by this evaluator process.
+  vllm_tag: latest
+  dtype: bfloat16
+  # The model supports 131072 tokens, but the card recommends staying within
+  # 32768 input tokens because long-context extrapolation can degrade accuracy.
+  # 65536 still leaves room for the 24576-token RL output budget.
+  max_model_len: 65536
+  gpu_memory_utilization: 0.95
+  reasoning_parser: openai_gptoss
+  trust_remote_code: false
+  enable_auto_tool_choice: false
+  tool_call_parser: null
+  # Avoid --async-scheduling here: BFCL uses structured output/response_format.
+  extra_args:
+    - "--no-enable-prefix-caching"
+    - "--max-num-batched-tokens"
+    - "8192"
+    - "--max-cudagraph-capture-size"
+    - "2048"
+
+generator:
+  # RL training used 24576 as the maximum output length.
+  max_tokens: 24576
+  temperature: 0.6
+  top_p: 0.95
+  tool_choice: none
+  extra_body:
+    top_k: 20
+    min_p: 0
+    chat_template_kwargs:
+      reasoning_effort: high
+
+jaster:
+  override_max_tokens: 24576
+
+jbbq:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+toxicity:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+swebench:
+  max_tokens: 24576
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+mtbench:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+  temperature_override:
+    writing: 0.6
+    roleplay: 0.6
+    extraction: 0.6
+    math: 0.6
+    coding: 0.6
+    reasoning: 0.6
+    stem: 0.6
+    humanities: 0.6
+
+bfcl:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+  handler_config:
+    unified_oss_jsonschema:
+      skip_hf_tokenizer: true
+      max_context_length_override: 65536
+      execution_result_role: "user"
+      execution_result_include_call_str: false
+      execution_result_include_call_id: false
+      execution_result_join_parallel_calls: true
+
+hallulens:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+hle:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+arc_agi:
+  max_output_tokens: 24576
+
+m_ifeval:
+  generator_config:
+    max_tokens: 24576
+    temperature: 0.6
+    top_p: 0.95
+    extra_body:
+      top_k: 20
+      min_p: 0
+      chat_template_kwargs:
+        reasoning_effort: high
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 3600.0
+    write: 300.0
+    pool: 30.0

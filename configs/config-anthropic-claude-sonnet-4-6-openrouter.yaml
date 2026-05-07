@@ -1,0 +1,58 @@
+wandb:
+  run_name: "anthropic/claude-sonnet-4.6: extended-thinking"
+api: openai-compatible # openai, anthropic, google,..
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+model:
+  pretrained_model_name_or_path: anthropic/claude-sonnet-4.6
+  bfcl_model_id: OpenRouter-FC
+  base_model: "unknown"
+  size_category: api
+  size: null
+  release_date: 2/17/2026
+
+generator:
+  parallel_tool_calls: true
+  max_tokens: 64000
+  extra_body:
+    reasoning:
+      max_tokens: 51200
+
+jaster:
+  override_max_tokens: 64000
+
+jbbq:
+  generator_config:
+    max_tokens: 64000
+
+toxicity:
+  generator_config:
+    max_tokens: 64000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 64000
+
+mtbench:
+  max_new_token: 64000
+
+bfcl:
+  generator_config:
+    max_tokens: 64000
+
+hallulens:
+  generator_config:
+    max_tokens: 64000
+
+hle:
+  max_completion_tokens: 64000
+
+arc_agi:
+  max_output_tokens: 64000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 64000
+
+swebench:
+  max_tokens: 64000

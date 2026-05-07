@@ -1,0 +1,14 @@
+wandb:
+  run_name: global.amazon.nova-2-lite-v1:0 thinking-high
+api: amazon_bedrock
+batch_size: 8
+inference_interval: 2
+model:
+  pretrained_model_name_or_path: global.amazon.nova-2-lite-v1:0
+  bfcl_model_id: "nova-2-lite-v1.0"
+  size_category: api
+  size: null
+  release_date: 12/2/2025
+  reasoning_config:
+    type: enabled
+    max_reasoning_effort: high

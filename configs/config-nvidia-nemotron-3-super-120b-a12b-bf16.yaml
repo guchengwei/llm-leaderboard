@@ -1,0 +1,113 @@
+wandb:
+  run_name: "nvidia/nemotron-3-super"
+
+api: openai-compatible
+base_url: "http://100.99.222.59:8000/v1"
+batch_size: 2
+
+model:
+  use_wandb_artifacts: false
+  # vLLM examples in the model card use this served-model-name.
+  # If your server exposes the raw HF id instead, change this one line.
+  pretrained_model_name_or_path: "nvidia/nemotron-3-super"
+  bfcl_model_id: "unified-oss-fc"
+  base_model: "nemotron-3"
+  size_category: "Large (30B+)"
+  size: 120000000000
+  release_date: 3/11/2026
+
+generator:
+  max_tokens: 32768
+  temperature: 1.0
+  top_p: 0.95
+  tool_choice: none # BFCL以外で tool call が暴発して content が空になるのを防ぐ
+  extra_body:
+    chat_template_kwargs:
+      enable_thinking: true
+
+jaster:
+  override_max_tokens: 32768
+
+jbbq:
+  generator_config:
+    max_tokens: 32768
+
+toxicity:
+  generator_config:
+    max_tokens: 32768
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+
+swebench:
+  max_tokens: 32768
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 32768
+    temperature: 1.0
+    top_p: 0.95
+  temperature_override:
+    writing: 1.0
+    roleplay: 1.0
+    extraction: 1.0
+    math: 1.0
+    coding: 1.0
+    reasoning: 1.0
+    stem: 1.0
+    humanities: 1.0
+
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: true
+  handler_config:
+    unified_oss_fc:
+      skip_hf_tokenizer: true
+      # Nemotron 3 Super defaults to 256k context in the published vLLM examples.
+      # If your server is launched with 1M context, you can raise this safely.
+      max_context_length_override: 262144
+
+hallulens:
+  generator_config:
+    max_tokens: 32768
+
+hle:
+  generator_config:
+    max_tokens: 32768
+
+arc_agi:
+  max_output_tokens: 32768
+
+m_ifeval:
+  generator_config:
+    max_tokens: 32768
+
+run:
+  bfcl: false
+  swebench: false
+  mtbench: false
+  jbbq: false
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  aggregate: true
+
+# API個別の上書き（必要に応じて）
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 900.0
+    write: 300.0
+    pool: 30.0

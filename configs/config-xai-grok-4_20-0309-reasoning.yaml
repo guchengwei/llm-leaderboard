@@ -1,0 +1,79 @@
+wandb:
+  run_name: "xai/grok-4.20-0309-reasoning"
+api: xai_responses
+batch_size: 8
+model:
+  pretrained_model_name_or_path: grok-4.20-0309-reasoning
+  bfcl_model_id: "grok-4.20-0309-reasoning-FC"
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 3/9/2026 # inferred from the dated snapshot id; xAI docs currently document the Grok 4.20 family under undated aliases
+
+generator:
+  parallel_tool_calls: true
+  max_tokens: 64000
+
+jaster:
+  override_max_tokens: null # use task-specific output_length for fairer evaluation
+
+jbbq:
+  generator_config:
+    max_tokens: 64000
+
+toxicity:
+  generator_config:
+    max_tokens: 64000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 64000
+
+swebench:
+  max_tokens: 64000
+  fc_enabled: true
+
+mtbench:
+  generator_config:
+    max_tokens: 64000
+
+bfcl:
+  generator_config:
+    max_tokens: 64000
+
+hallulens:
+  generator_config:
+    max_tokens: 64000
+
+hle:
+  generator_config:
+    max_tokens: 64000
+
+arc_agi:
+  max_output_tokens: 64000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 64000
+
+xai:
+  http_timeout:
+    connect: 10.0
+    read: 3600.0
+    write: 300.0
+    pool: 30.0
+
+run:
+  bfcl: false
+  swebench: true
+  mtbench: true
+  jbbq: true
+  toxicity: true
+  jtruthfulqa: true
+  hle: true
+  hallulens: true
+  arc_agi: true
+  m_ifeval: true
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  aggregate: true

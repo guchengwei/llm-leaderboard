@@ -1,0 +1,67 @@
+wandb:
+  run_name: "google/gemma-4-31b-it"
+
+api: openai-compatible
+base_url: https://openrouter.ai/api/v1
+batch_size: 32
+
+model:
+  pretrained_model_name_or_path: google/gemma-4-31b-it
+  bfcl_model_id: "OpenRouter-FC"
+  base_model: "gemma-4"
+  size_category: "Large (30B+)"
+  size: 31000000000
+  release_date: 5/20/2025
+
+# Gemma 4 thinking mode
+# Reasoning param: https://openrouter.ai/docs/use-cases/reasoning-tokens
+# Sampling params: https://ai.google.dev/gemma/docs/core/model_card_4
+generator:
+  max_tokens: 32000
+  parallel_tool_calls: true
+  temperature: 1.0   # model card recommendation for thinking mode
+  top_p: 0.95        # model card recommendation for thinking mode
+  extra_body:
+    reasoning:
+      enabled: true  # OpenRouter standard reasoning flag for Gemma 4
+    provider:
+      allow_fallbacks: true  # reasoning+tools 対応プロバイダへのフォールバックを許可
+
+jaster:
+  override_max_tokens: 32000
+
+jbbq:
+  generator_config:
+    max_tokens: 32000
+
+toxicity:
+  generator_config:
+    max_tokens: 32000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32000
+
+swebench:
+  max_tokens: 32000
+
+mtbench:
+  max_new_token: 32000
+
+bfcl:
+  generator_config:
+    max_tokens: 32000
+
+hallulens:
+  generator_config:
+    max_tokens: 32000
+
+hle:
+  max_completion_tokens: 32000
+
+arc_agi:
+  max_output_tokens: 32000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 32000

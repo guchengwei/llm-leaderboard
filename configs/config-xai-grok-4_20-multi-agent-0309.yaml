@@ -1,0 +1,67 @@
+wandb:
+  run_name: "xai/grok-4.20-multi-agent-0309: 16-agent"
+api: xai_responses
+batch_size: 4
+model:
+  pretrained_model_name_or_path: grok-4.20-multi-agent-0309
+  bfcl_model_id: "grok-4.20-multi-agent-0309" # xAI public docs: multi-agent currently does not support client-side/custom tools
+  base_model: unknown
+  size_category: api
+  size: null
+  release_date: 3/9/2026 # inferred from the dated snapshot id; xAI docs currently document the public alias grok-4.20-multi-agent
+
+generator:
+  parallel_tool_calls: true
+  max_tokens: 64000
+  extra_body:
+    reasoning:
+      effort: xhigh # xAI docs: high/xhigh both select the 16-agent setup
+
+jaster:
+  override_max_tokens: null # use task-specific output_length for fairer evaluation
+
+jbbq:
+  generator_config:
+    max_tokens: 64000
+
+toxicity:
+  generator_config:
+    max_tokens: 64000
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 64000
+
+swebench:
+  max_tokens: 64000
+  fc_enabled: false # submit_patch function calling is blocked for multi-agent unless client-side tools beta is enabled
+
+mtbench:
+  generator_config:
+    max_tokens: 64000
+
+bfcl:
+  generator_config:
+    max_tokens: 64000
+
+hallulens:
+  generator_config:
+    max_tokens: 64000
+
+hle:
+  generator_config:
+    max_tokens: 64000
+
+arc_agi:
+  max_output_tokens: 64000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 64000
+
+xai:
+  http_timeout:
+    connect: 10.0
+    read: 3600.0
+    write: 300.0
+    pool: 30.0

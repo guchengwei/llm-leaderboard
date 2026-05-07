@@ -1,0 +1,164 @@
+wandb:
+  run_name: "LGAI-EXAONE/EXAONE-4.5-33B"
+
+api: openai-compatible
+base_url: "http://100.66.47.69:8001/v1"
+batch_size: 16
+
+model:
+  use_wandb_artifacts: false
+  # The EXAONE 4.5 README launch example uses `--served-model-name EXAONE-4.5-33B`.
+  # If your vLLM server exposes the HF id instead, change this to
+  # `LGAI-EXAONE/EXAONE-4.5-33B`.
+  pretrained_model_name_or_path: EXAONE-4.5-33B
+  # EXAONE 4.5 README shows vLLM with `--enable-auto-tool-choice` and
+  # `--tool-call-parser hermes`, so BFCL should use native function calling.
+  bfcl_model_id: "unified-oss-fc"
+  base_model: "exaone-4.5"
+  size_category: "Large (30B+)"
+  size: 34350100000
+  release_date: 4/4/2026
+
+# EXAONE 4.5 self-hosted on vLLM.
+# Official README notes:
+# - Context length: 262,144 tokens
+# - `enable_thinking=True` by default
+# - text-only inputs: `temperature=1.0`, `top_p=0.95`
+# - vLLM launch uses `--reasoning-parser qwen3`, `--enable-auto-tool-choice`,
+#   and `--tool-call-parser hermes`
+generator:
+  # Keep the same "maximum firepower with margin" policy as Gemma 4 configs:
+  # large output budget, but still leave enough room for prompt/context growth.
+  max_tokens: 25000
+  temperature: 1.0
+  top_p: 0.95
+  tool_choice: none # Prevent accidental tool calls outside BFCL.
+  extra_body:
+    thinking_token_budget: 20000
+    chat_template_kwargs:
+      enable_thinking: true
+
+jaster:
+  override_max_tokens: 25000
+
+jbbq:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+toxicity:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+swebench:
+  max_tokens: 25000
+
+mtbench:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+  temperature_override:
+    writing: 1.0
+    roleplay: 1.0
+    extraction: 1.0
+    math: 1.0
+    coding: 1.0
+    reasoning: 1.0
+    stem: 1.0
+    humanities: 1.0
+
+bfcl:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    tool_choice: auto
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+  handler_config:
+    unified_oss_fc:
+      skip_hf_tokenizer: true
+      max_context_length_override: 131072
+
+hallulens:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+hle:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+arc_agi:
+  max_output_tokens: 25000
+
+m_ifeval:
+  generator_config:
+    max_tokens: 25000
+    temperature: 1.0
+    top_p: 0.95
+    extra_body:
+      thinking_token_budget: 20000
+      chat_template_kwargs:
+        enable_thinking: true
+
+openai:
+  http_timeout:
+    connect: 10.0
+    read: 3600.0
+    write: 300.0
+    pool: 30.0
+
+run:
+  bfcl: false
+  swebench: false
+  mtbench: false
+  jbbq: false 
+  toxicity: false
+  jtruthfulqa: false
+  hle: false
+  hallulens: false
+  arc_agi: false
+  m_ifeval: false
+  jaster: true
+  jmmlu_robustness: true # if this is set as true, jaster should set as true  
+  aggregate: true

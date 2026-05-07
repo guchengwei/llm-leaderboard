@@ -1,5 +1,6 @@
 import os
 import asyncio
+import ast
 from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Union, Any
@@ -28,6 +29,26 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 
+_JSON_CODE_FENCE_RE = re.compile(
+    r"^\s*```(?:json|JSON)?\s*(.*?)\s*```\s*$",
+    re.DOTALL,
+)
+
+_LLMJP4_FINAL_SPECIAL_RE = re.compile(
+    r"<\|channel\|>\s*final\s*<\|message\|>(.*?)(?:<\|return\|>|<\|end\|>|<\|start\|>|$)",
+    re.DOTALL,
+)
+_LLMJP4_ANALYSIS_SPECIAL_RE = re.compile(
+    r"<\|channel\|>\s*(?!final\b)[^<]*<\|message\|>(.*?)(?:<\|end\|>|<\|start\|>|$)",
+    re.DOTALL,
+)
+_LLMJP4_FINAL_TEXT_MARKERS = (
+    " assistant final ",
+    "\nassistant final ",
+    "assistant final ",
+)
+
+
 @dataclass
 class ToolCall:
     name: str
@@ -40,15 +61,331 @@ class ToolCall:
 class LLMResponse:
     content: str
     reasoning_content: str = ""
+    # OpenRouter reasoning blocks (for preserving reasoning across tool calls)
+    # - reasoning: plaintext reasoning (alias of reasoning_content in some providers)
+    # - reasoning_details: structured reasoning blocks (required to preserve tool-use continuity for some reasoning models)
+    reasoning: Optional[str] = None
+    reasoning_details: Optional[Any] = None
     parsed_output: Optional[BaseModel] = None
     tool_calls: Optional[List[ToolCall]] = None
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
+    finish_reason: Optional[str] = None
+    content_was_none: bool = False
+
+
+def _strip_json_code_fence(text: str) -> str:
+    match = _JSON_CODE_FENCE_RE.match(text)
+    if match:
+        return match.group(1).strip()
+
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Some OSS models emit an opening fence without a closing fence, or put
+        # the JSON object immediately after the fence as in ```{...}.
+        stripped = stripped[3:].lstrip()
+        if stripped[:4].lower() == "json" and (
+            len(stripped) == 4 or stripped[4].isspace()
+        ):
+            stripped = stripped[4:].lstrip()
+        if stripped.endswith("```"):
+            stripped = stripped[:-3].rstrip()
+
+    return stripped
+
+
+def _structured_json_candidates(text: str) -> list[str]:
+    """Return conservative JSON repair candidates for structured-output parsing."""
+    stripped = _strip_json_code_fence(text)
+    candidates = [stripped]
+
+    # Some reasoning models occasionally emit one extra outer brace under
+    # guided JSON. Keep this repair narrow: only trim a duplicated boundary.
+    if stripped.startswith("{{"):
+        candidates.append(stripped[1:])
+    if stripped.endswith("}}"):
+        candidates.append(stripped[:-1])
+    if stripped.startswith("{{") and stripped.endswith("}}"):
+        candidates.append(stripped[1:-1])
+
+    deduped = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+
+def _response_format_to_param(response_format: Any) -> Any:
+    if isinstance(response_format, dict):
+        return response_format
+
+    from openai.lib._parsing._completions import type_to_response_format_param
+
+    return type_to_response_format_param(response_format)
+
+
+def _parse_structured_response_content(response_format: Any, content: str) -> tuple[Any, str]:
+    last_error = None
+    for candidate in _structured_json_candidates(content):
+        try:
+            if hasattr(response_format, "model_validate_json"):
+                return response_format.model_validate_json(candidate), candidate
+            return json.loads(candidate), candidate
+        except Exception as e:
+            last_error = e
+
+    if last_error is not None:
+        raise last_error
+    raise json.JSONDecodeError("Empty structured response", content, 0)
+
+
+def _get_model_response_postprocess() -> Optional[str]:
+    try:
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        if cfg is None:
+            return None
+        model_cfg = getattr(cfg, "model", {})
+        if hasattr(model_cfg, "get"):
+            mode = model_cfg.get("response_postprocess", None)
+        else:
+            mode = getattr(model_cfg, "response_postprocess", None)
+        return str(mode) if mode else None
+    except Exception:
+        return None
+
+
+def _clean_llmjp4_harmony_text(text: str) -> str:
+    text = re.sub(r"<\|(?:start|channel|constrain|message|end|return|call|startoftext|endoftext)\|>", "", text)
+    return text.strip()
+
+
+def _extract_llmjp4_harmony_final(content: str, reasoning_content: str = "") -> tuple[str, str]:
+    """Extract final-channel text from raw LLM-jp-4 Harmony output.
+
+    The official llm-jp vLLM parser documents incomplete non-streaming support.
+    This opt-in fallback lets benchmarks receive the final answer if an external
+    server returns raw Harmony markup instead of parsed final-channel content.
+    """
+    source = content or ""
+    if not source:
+        return content, reasoning_content
+
+    match = None
+    for candidate in _LLMJP4_FINAL_SPECIAL_RE.finditer(source):
+        match = candidate
+    if match:
+        final_text = _clean_llmjp4_harmony_text(match.group(1))
+        analyses = [_clean_llmjp4_harmony_text(m.group(1)) for m in _LLMJP4_ANALYSIS_SPECIAL_RE.finditer(source)]
+        analyses = [item for item in analyses if item]
+        return final_text, reasoning_content or "\n\n".join(analyses)
+
+    marker_index = -1
+    marker_len = 0
+    for marker in _LLMJP4_FINAL_TEXT_MARKERS:
+        idx = source.rfind(marker)
+        if idx > marker_index:
+            marker_index = idx
+            marker_len = len(marker)
+    if marker_index != -1:
+        return _clean_llmjp4_harmony_text(source[marker_index + marker_len:]), reasoning_content
+
+    return content, reasoning_content
+
+
+def _postprocess_model_response_content(content: str, reasoning_content: str) -> tuple[str, str]:
+    mode = _get_model_response_postprocess()
+    if mode == "llmjp4_harmony_final":
+        return _extract_llmjp4_harmony_final(content, reasoning_content)
+    return content, reasoning_content
+
+
+def _replace_json_literals_for_python(text: str) -> str:
+    def is_word_char(char: str) -> bool:
+        return char.isalnum() or char == "_"
+
+    result: List[str] = []
+    idx = 0
+    in_string = False
+    quote_char = ""
+    escaped = False
+
+    while idx < len(text):
+        char = text[idx]
+
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote_char:
+                in_string = False
+                quote_char = ""
+            idx += 1
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            quote_char = char
+            result.append(char)
+            idx += 1
+            continue
+
+        replaced = None
+        for json_word, python_word in (
+            ("true", "True"),
+            ("false", "False"),
+            ("null", "None"),
+        ):
+            end_idx = idx + len(json_word)
+            before_ok = idx == 0 or not is_word_char(text[idx - 1])
+            after_ok = end_idx >= len(text) or not is_word_char(text[end_idx])
+            if text.startswith(json_word, idx) and before_ok and after_ok:
+                replaced = python_word
+                idx = end_idx
+                break
+
+        if replaced is not None:
+            result.append(replaced)
+            continue
+
+        result.append(char)
+        idx += 1
+
+    return "".join(result)
+
+
+def _extract_json_like_fragment(text: str) -> str:
+    start_candidates = [pos for pos in (text.find("{"), text.find("[")) if pos != -1]
+    if not start_candidates:
+        return text
+
+    start = min(start_candidates)
+    fragment = text[start:]
+    stack: List[str] = []
+    in_string = False
+    quote_char = ""
+    escaped = False
+
+    for idx, char in enumerate(fragment):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote_char:
+                in_string = False
+                quote_char = ""
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            quote_char = char
+            continue
+
+        if char in "{[":
+            stack.append(char)
+            continue
+
+        if char in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                return fragment[: idx + 1]
+
+    repaired = fragment
+    if in_string and quote_char:
+        repaired += quote_char
+
+    closing_map = {"{": "}", "[": "]"}
+    while stack:
+        repaired += closing_map[stack.pop()]
+
+    return repaired
+
+
+def _normalize_openai_compatible_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Normalize chat messages before sending them to OpenAI-compatible servers.
+
+    Some servers / chat templates assume `content` is always a string and fail on
+    tool-call turns represented as `content=None`. Preserve structure but coerce
+    null content to an empty string.
+    """
+    normalized: List[Dict[str, Any]] = []
+    for message in messages:
+        normalized_message = dict(message)
+        if normalized_message.get("content") is None:
+            normalized_message["content"] = ""
+        normalized.append(normalized_message)
+    return normalized
+
+
+def _repair_common_json_issues(text: str) -> str:
+    repaired = text
+    if repaired.lower().startswith("json"):
+        repaired = repaired[4:].lstrip()
+
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+
+    missing_comma_patterns = (
+        (r'("(?:(?:\\.|[^"\\])*)")\s+(?=")', r"\1, "),
+        (r'("(?:(?:\\.|[^"\\])*)")\s+(?=[\[{\-0-9tfn])', r"\1, "),
+        (r"([}\]0-9])\s+(?=\")", r"\1, "),
+        (r"([}\]0-9])\s+(?=[\[{\-0-9tfn])", r"\1, "),
+        (r"\b(true|false|null)\b\s+(?=\")", r"\1, "),
+        (r"\b(true|false|null)\b\s+(?=[\[{\-0-9tfn])", r"\1, "),
+    )
+
+    for _ in range(3):
+        previous = repaired
+        for pattern, replacement in missing_comma_patterns:
+            repaired = re.sub(pattern, replacement, repaired)
+        if repaired == previous:
+            break
+
+    return repaired
+
+
+def _parse_tool_call_arguments(arguments: Any, *, strict: bool = True) -> Dict[str, Any]:
+    if arguments is None or arguments == "":
+        return {}
+    if isinstance(arguments, dict):
+        return arguments
+    if not isinstance(arguments, str):
+        raise TypeError(f"Unsupported tool call arguments type: {type(arguments).__name__}")
+
+    normalized = _extract_json_like_fragment(_strip_json_code_fence(arguments))
+    repaired = _repair_common_json_issues(normalized)
+    candidates: List[str] = []
+    for candidate in (normalized, repaired):
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+
+    last_json_error: Optional[json.JSONDecodeError] = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        except json.JSONDecodeError as exc:
+            last_json_error = exc
+
+        try:
+            parsed = ast.literal_eval(_replace_json_literals_for_python(candidate))
+            return parsed if isinstance(parsed, dict) else {"value": parsed}
+        except (SyntaxError, ValueError):
+            continue
+
+    if strict and last_json_error is not None:
+        raise last_json_error
+
+    raise json.JSONDecodeError("Unable to parse tool call arguments", arguments, 0)
 
 
 def filter_params(params, allowed_params):
     """許可されたパラメータのみをフィルタリング"""
-    return {k: v for k, v in params.items() if k in allowed_params}
+    return {k: v for k, v in params.items() if k in allowed_params and v is not None}
 
 
 def map_common_params(params, param_mapping):
@@ -142,6 +479,45 @@ class ChatBedrock(BaseLLMClient):
         self.generator_config = {
             k: v for k, v in cfg.generator.items() if k not in self.ignore_keys
         }
+        self.reasoning_config = self._normalize_reasoning_config(cfg)
+
+    @staticmethod
+    def _normalize_reasoning_config(cfg) -> Optional[Dict[str, str]]:
+        try:
+            raw = getattr(cfg.model, "reasoning_config", None)
+            if raw is None:
+                raw = getattr(cfg.model, "reasoningConfig", None)
+        except Exception:
+            raw = None
+
+        if raw is None:
+            return None
+
+        try:
+            if isinstance(raw, dict):
+                raw_dict = raw
+            elif hasattr(raw, "items"):
+                raw_dict = {key: raw[key] for key in raw}
+            else:
+                return None
+        except Exception:
+            return None
+
+        normalized: Dict[str, str] = {}
+        if "type" in raw_dict and raw_dict["type"] is not None:
+            normalized["type"] = str(raw_dict["type"])
+        elif "enabled" in raw_dict:
+            normalized["type"] = "enabled" if raw_dict["enabled"] else "disabled"
+
+        if "maxReasoningEffort" in raw_dict and raw_dict["maxReasoningEffort"] is not None:
+            normalized["maxReasoningEffort"] = str(raw_dict["maxReasoningEffort"])
+        elif "max_reasoning_effort" in raw_dict and raw_dict["max_reasoning_effort"] is not None:
+            normalized["maxReasoningEffort"] = str(raw_dict["max_reasoning_effort"])
+
+        if normalized.get("type") == "enabled" or "maxReasoningEffort" in normalized:
+            return normalized
+
+        return None
 
     async def _invoke_async(self, messages: list[dict[str, str]], max_tokens: int):
         """非同期でBedrockを呼び出し"""
@@ -188,6 +564,13 @@ class ChatBedrock(BaseLLMClient):
                 "messages": messages,
                 "inferenceConfig": inference_config
             }
+            if self.reasoning_config:
+                if self.reasoning_config.get("maxReasoningEffort", "").lower() == "high":
+                    for key in ["temperature", "topP", "topK", "top_k", "maxTokens"]:
+                        inference_config.pop(key, None)
+                body_dict["additionalModelRequestFields"] = {
+                    "reasoningConfig": self.reasoning_config
+                }
         else:
             raise ValueError(f"Unsupported model: {self.model_id}")
 
@@ -246,6 +629,7 @@ class ChatBedrock(BaseLLMClient):
             max_tokens = 1024
         
         response = await self._invoke_async(messages=messages, max_tokens=max_tokens)
+        reasoning_content = ""
         
         if "anthropic" in self.model_id.lower():
             content_list = response.get("content", [])
@@ -258,22 +642,31 @@ class ChatBedrock(BaseLLMClient):
             content = content.replace("<|start_header_id|>assistant<|end_header_id|>\n", "").replace("\n<|eot_id|>", "") 
         elif "nova" in self.model_id.lower():
             content_list = response.get("output", {}).get("message", {}).get("content", [])
-            if content_list and len(content_list) > 0:
-                content = content_list[0].get("text", "")
-            else:
-                content = ""
+            reasoning_content = ""
+            content = ""
+            for item in content_list:
+                if "reasoningContent" in item:
+                    reasoning_text = (
+                        item.get("reasoningContent", {})
+                        .get("reasoningText", {})
+                        .get("text", "")
+                    )
+                    if reasoning_text:
+                        reasoning_content += reasoning_text
+                elif "text" in item and not content:
+                    content = item.get("text", "")
         else:
             content = ""
         
-        return LLMResponse(content=content)
+        return LLMResponse(content=content, reasoning_content=reasoning_content)
 
 
 class OpenAIClient:
-    def __init__(self, api_key=None, base_url=None, model=None, **kwargs):
+    def __init__(self, api_key=None, base_url=None, model=None, timeout_primary_key="openai", **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config if instance else None
-        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
@@ -294,7 +687,8 @@ class OpenAIClient:
             'frequency_penalty', 'logit_bias', 'logprobs', 'max_tokens',
             'n', 'presence_penalty', 'response_format', 'seed', 'stop',
             'stream', 'temperature', 'top_p', 'tools', 'tool_choice',
-            'user', 'extra_body', 'functions', 'function_call'
+            'user', 'extra_body', 'functions', 'function_call',
+            'parallel_tool_calls', 'reasoning_effort'
         }
         
         self.param_mapping = {}
@@ -307,7 +701,7 @@ class OpenAIClient:
         
         params = {
             "model": self.model,
-            "messages": messages,
+            "messages": _normalize_openai_compatible_messages(messages),
             **filtered_params
         }
         
@@ -353,8 +747,15 @@ class OpenAIClient:
                 # その他のBadRequestErrorはそのまま再発生
                 raise e
         
-        # reasoningでtokenを使い切るとcontentがNoneになる対策
-        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        # choices が None の場合はプロバイダーエラーとして ConnectionError を発生させリトライ
+        if not response.choices:
+            error_info = getattr(response, 'error', None)
+            raise ConnectionError(f"API returned null/empty choices (provider error: {error_info}). response={response}")
+
+        # reasoningでtokenを使い切るとcontentがNoneになることがあるため、
+        # 下流では空文字で扱いつつ診断用フラグを保持する。
+        content_was_none = response.choices[0].message.content is None
+        content = '' if content_was_none else response.choices[0].message.content
         reasoning_content = ''
         # vLLM reasoning parser output
         if hasattr(response.choices[0].message, 'reasoning_content'):
@@ -363,7 +764,17 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
-        return LLMResponse(content=content, reasoning_content=reasoning_content)
+        content, reasoning_content = _postprocess_model_response_content(content, reasoning_content)
+        reasoning_details = getattr(response.choices[0].message, 'reasoning_details', None)
+        reasoning_plain = getattr(response.choices[0].message, 'reasoning', None)
+        return LLMResponse(
+            content=content,
+            reasoning_content=reasoning_content,
+            reasoning=reasoning_plain,
+            reasoning_details=reasoning_details,
+            finish_reason=getattr(response.choices[0], "finish_reason", None),
+            content_was_none=content_was_none,
+        )
 
     async def ainvoke(self, messages, max_tokens=None, **kwargs):
         """非同期版のinvoke"""
@@ -390,7 +801,7 @@ class OpenAIClient:
         
         params = {
             "model": self.model,
-            "messages": messages,
+            "messages": _normalize_openai_compatible_messages(messages),
             **filtered_params
         }
         
@@ -421,9 +832,14 @@ class OpenAIClient:
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
 
+        manual_response_format = None
+        if "response_format" in params and all_kwargs.get("manual_response_format_parse"):
+            manual_response_format = params["response_format"]
+            params["response_format"] = _response_format_to_param(manual_response_format)
+
         try:
             # Structured output
-            if "response_format" in params:
+            if "response_format" in params and manual_response_format is None:
                 response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
                 parsed_output = response.choices[0].message.parsed
             else:
@@ -444,7 +860,7 @@ class OpenAIClient:
             
             # リクエスト時点でpromt+max_tokensがコンテキスト長を超える場合、max_tokensを調整してmax_context_lengthギリギリまで可能な範囲で生成する
             # (OpenAI, vLLMのエラーメッセージに対応)
-            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \(([0-9]+) in the messages, ([0-9]+) in the completion\)", e.message):
+            if match := re.search("maximum context length is ([0-9]+) tokens. However, you requested [0-9]+ tokens \\(([0-9]+) in the messages, ([0-9]+) in the completion\\)", e.message):
                 max_context_length = int(match.group(1))
                 prompt_tokens = int(match.group(2))
                 completion_tokens = int(match.group(3))
@@ -456,7 +872,7 @@ class OpenAIClient:
                         f"(max_context_length:{max_context_length}, prompt_tokens:{prompt_tokens}, max_output_tokens:{completion_tokens})"
                     )
                     params["max_tokens"] = shrinked_completion_tokens
-                    if "response_format" in params:
+                    if "response_format" in params and manual_response_format is None:
                         response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
                         parsed_output = response.choices[0].message.parsed
                     else:
@@ -469,8 +885,15 @@ class OpenAIClient:
                 # Token長以外のBadRequestの場合はそのままエラー
                 raise e
 
-        # reasoningでtokenを使い切るとcontentがNoneになる対策
-        content = '' if response.choices[0].message.content is None else response.choices[0].message.content
+        # choices が None の場合はプロバイダーエラーとして ConnectionError を発生させリトライ
+        if not response.choices:
+            error_info = getattr(response, 'error', None)
+            raise ConnectionError(f"API returned null/empty choices (provider error: {error_info}). response={response}")
+
+        # reasoningでtokenを使い切るとcontentがNoneになることがあるため、
+        # 下流では空文字で扱いつつ診断用フラグを保持する。
+        content_was_none = response.choices[0].message.content is None
+        content = '' if content_was_none else response.choices[0].message.content
         reasoning_content = ''
         # vLLM reasoning parser output
         # https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#quickstart
@@ -480,6 +903,12 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
+        content, reasoning_content = _postprocess_model_response_content(content, reasoning_content)
+
+        if manual_response_format is not None:
+            parsed_output, content = _parse_structured_response_content(
+                manual_response_format, content
+            )
 
         # usage が欠落する実装に対しても安全にデフォルト0で継続
         usage = getattr(response, 'usage', None)
@@ -491,28 +920,22 @@ class OpenAIClient:
             reasoning_content=reasoning_content,
             parsed_output=parsed_output,
             prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens
+            completion_tokens=completion_tokens,
+            finish_reason=getattr(response.choices[0], "finish_reason", None),
+            content_was_none=content_was_none,
         )
 
-        def parse_arguments(arguments: str):
-            """
-            ArgumentsのJSONをパースする
-            OpenRouterなどの一部の互換実装ではValid JSONではなく空文字や最後の}がないケースがあるのでカバーする
-            """
-            if arguments is None or arguments == "":
-                return {}
-            try:
-                return json.loads(arguments)
-            except json.JSONDecodeError as e1:
-                try:
-                    return json.loads(arguments + '}')
-                except json.JSONDecodeError:
-                    raise e1
+        # Preserve OpenRouter reasoning blocks if present (used for tool-call continuity)
+        try:
+            llm_response.reasoning = getattr(response.choices[0].message, 'reasoning', None)
+            llm_response.reasoning_details = getattr(response.choices[0].message, 'reasoning_details', None)
+        except Exception:
+            pass
 
         if tool_calls := response.choices[0].message.tool_calls:
             llm_response.tool_calls = [ToolCall(
                 name=tool_call.function.name,
-                arguments=parse_arguments(tool_call.function.arguments),
+                arguments=_parse_tool_call_arguments(tool_call.function.arguments),
                 id=tool_call.id,
                 type=tool_call.type
             ) for tool_call in tool_calls]
@@ -524,11 +947,11 @@ class OpenAIResponsesClient(BaseLLMClient):
     """
     OpenAIのResponses APIを使用するクライアント(Reasoning対応)
     """
-    def __init__(self, api_key=None, base_url=None, model=None, structured=False, **kwargs):
+    def __init__(self, api_key=None, base_url=None, model=None, structured=False, timeout_primary_key="openai", **kwargs):
         # YAMLから（なければデフォルトで）HTTPタイムアウトを解決
         instance = WandbConfigSingleton.get_instance()
         cfg = instance.config if instance else None
-        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key="openai") if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
+        timeout = _resolve_http_timeout_from_cfg(cfg, primary_key=timeout_primary_key) if cfg else httpx.Timeout(connect=10.0, read=300.0, write=300.0, pool=30.0)
 
         self.async_client = openai.AsyncOpenAI(
             api_key=api_key,
@@ -552,9 +975,11 @@ class OpenAIResponsesClient(BaseLLMClient):
         """非同期版のinvoke"""
         all_kwargs = {**self.kwargs, **kwargs}
         # generator.extra_body.reasoning をトップレベルreasoningに昇格
+        # OmegaConf.DictConfig は isinstance(..., dict) で False になるため、
+        # hasattr で .get メソッドの存在をチェックする
         try:
             extra_body = all_kwargs.get('extra_body')
-            if extra_body and isinstance(extra_body, dict) and 'reasoning' in extra_body:
+            if extra_body and hasattr(extra_body, 'get') and 'reasoning' in extra_body:
                 all_kwargs['reasoning'] = extra_body['reasoning']
         except Exception:
             pass
@@ -600,15 +1025,11 @@ class OpenAIResponsesClient(BaseLLMClient):
                     arguments_raw = getattr(output, "arguments", None)
                     call_id = getattr(output, "call_id", None)
                     parsed_args = {}
-                    if isinstance(arguments_raw, str) and len(arguments_raw) > 0:
+                    if arguments_raw is not None:
                         try:
-                            parsed_args = json.loads(arguments_raw)
+                            parsed_args = _parse_tool_call_arguments(arguments_raw)
                         except json.JSONDecodeError:
-                            # Try to recover from missing closing brace
-                            try:
-                                parsed_args = json.loads(arguments_raw + "}")
-                            except Exception:
-                                parsed_args = {"_raw": arguments_raw}
+                            parsed_args = {"_raw": arguments_raw}
                     collected_tool_calls.append(ToolCall(name=name or "", arguments=parsed_args, id=str(call_id) if call_id else str(uuid.uuid4()), type="function"))
                 except Exception:
                     pass
@@ -822,18 +1243,39 @@ class GoogleClient(BaseLLMClient):
                 # Create config with all parameters according to Gemini API docs
                 config_kwargs = {}
                 
-                # Handle thinking configuration for Gemini 2.5 models
-                # Get thinking_budget from config file, not from config_params
+                # Handle thinking configuration for Gemini models.
+                # Prefer thinking_level if available, with compatibility fallback.
                 try:
                     instance = WandbConfigSingleton.get_instance()
                     cfg = instance.config
+                    thinking_level = getattr(cfg.model, "thinking_level", None)
                     thinking_budget = getattr(cfg.model, 'thinking_budget', 0)
-                    
-                    # Handle automatic thinking budget allocation
-                    if thinking_budget == -1:
+
+                    level = str(thinking_level).strip().lower() if thinking_level else None
+                    if level:
+                        try:
+                            config_kwargs["thinking_config"] = types.ThinkingConfig(
+                                thinking_level=level
+                            )
+                            print(f"Gemini thinking enabled with level: {level}")
+                        except Exception:
+                            level_to_budget = {
+                                "minimal": 0,
+                                "low": 1024,
+                                "medium": 8192,
+                                "high": -1,
+                            }
+                            fallback_budget = level_to_budget.get(level, -1)
+                            if fallback_budget == -1:
+                                config_kwargs["thinking_config"] = types.ThinkingConfig()
+                            elif fallback_budget > 0:
+                                config_kwargs["thinking_config"] = types.ThinkingConfig(
+                                    thinking_budget=fallback_budget
+                                )
+                    elif thinking_budget == -1:
                         # Use automatic allocation (API will choose optimal value)
                         config_kwargs["thinking_config"] = types.ThinkingConfig()
-                        print(f"Gemini thinking enabled with automatic budget allocation")
+                        print("Gemini thinking enabled with automatic budget allocation")
                     elif thinking_budget >= 0:
                         # Use specific budget value
                         config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=thinking_budget)
@@ -1361,6 +1803,15 @@ def get_llm_inference_engine() -> BaseLLMClient:
             **cfg.generator,
         )
 
+    elif api_type == "xai_responses":
+        llm = OpenAIResponsesClient(
+            api_key=os.environ["XAI_API_KEY"],
+            base_url="https://api.x.ai/v1",
+            model=cfg.model.pretrained_model_name_or_path,
+            timeout_primary_key="xai",
+            **cfg.generator,
+        )
+
     elif api_type in ["openai", "openai_chat"]: # "openai" は後方互換性のため
         llm = OpenAIClient(
             api_key=os.environ["OPENAI_API_KEY"],
@@ -1372,6 +1823,18 @@ def get_llm_inference_engine() -> BaseLLMClient:
         llm = OpenAIClient(
             api_key=os.environ["XAI_API_KEY"],
             base_url="https://api.x.ai/v1",
+            model=cfg.model.pretrained_model_name_or_path,
+            timeout_primary_key="xai",
+            **cfg.generator,
+        )
+
+    elif api_type == "deepseek":
+        llm = OpenAIClient(
+            api_key=os.environ.get(
+                "DEEPSEEK_API_KEY",
+                os.environ.get("OPENAI_COMPATIBLE_API_KEY", "EMPTY"),
+            ),
+            base_url=cfg.get("base_url", "https://api.deepseek.com"),
             model=cfg.model.pretrained_model_name_or_path,
             **cfg.generator,
         )
@@ -1428,5 +1891,3 @@ def get_llm_inference_engine() -> BaseLLMClient:
         raise ValueError(f"Unsupported API type: {api_type}")
     
     return llm
-
-
