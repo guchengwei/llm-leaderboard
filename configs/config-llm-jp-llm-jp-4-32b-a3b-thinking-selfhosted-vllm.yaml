@@ -2,7 +2,7 @@ wandb:
   run_name: "llm-jp/llm-jp-4-32b-a3b-thinking"
 
 api: openai-compatible
-base_url: "http://100.73.129.52:8000/v1"
+base_url: "http://100.91.253.111:8000/v1"
 batch_size: 8
 
 model:
@@ -11,8 +11,11 @@ model:
   # If you launch with `--served-model-name llm-jp-4-32b-a3b-thinking`,
   # change this field to that exact string.
   pretrained_model_name_or_path: llm-jp/llm-jp-4-32b-a3b-thinking
-  # Harmony-compatible tool calling on vLLM should use native function calling.
-  bfcl_model_id: "unified-oss-fc"
+  # The cookbook provides an llmjp4 reasoning parser, but no native vLLM tool parser.
+  # Use JSONSchema prompting for BFCL instead of server-side tool parsing.
+  bfcl_model_id: "unified-oss-jsonschema"
+  # Client-side safety net for raw Harmony responses if the server returns unparsed non-streaming output.
+  response_postprocess: "llmjp4_harmony_final"
   base_model: "llm-jp/llm-jp-4-32b-a3b-base"
   size_category: "Large (30B+)"
   size: 32139000000
@@ -24,10 +27,12 @@ vllm:
   # flags and make the config reusable if you later switch back to repo-managed
   # vLLM.
   max_model_len: 65536
+  # Launch the external server via llm-jp's cookbook example_cli.py, or pass
+  # --reasoning-parser-plugin /path/to/llmjp4_reasoning_parser.py.
   reasoning_parser: llmjp4
   trust_remote_code: true
-  enable_auto_tool_choice: true
-  tool_call_parser: llmjp4
+  enable_auto_tool_choice: false
+  tool_call_parser: null
 
 # llm-jp-4 thinking models use an OpenAI Harmony-compatible template via the
 # custom tokenizer loaded with `trust_remote_code=True`.
@@ -41,7 +46,7 @@ generator:
   top_p: 0.95
   tool_choice: none # Prevent accidental tool calls outside BFCL.
   extra_body:
-    skip_special_tokens: false
+    skip_special_tokens: true
     chat_template_kwargs:
       reasoning_effort: high
 
@@ -54,7 +59,7 @@ jbbq:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 
@@ -64,7 +69,7 @@ toxicity:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 
@@ -74,7 +79,7 @@ jtruthfulqa:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 
@@ -87,7 +92,7 @@ mtbench:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
   temperature_override:
@@ -103,19 +108,22 @@ mtbench:
 bfcl:
   generator_config:
     max_tokens: 25000
-    temperature: 1.0
+    temperature: 0.1
     top_p: 0.95
-    tool_choice: auto
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
   handler_config:
-    unified_oss_fc:
+    unified_oss_jsonschema:
       # The llm-jp tokenizer requires trust_remote_code and carries a custom
       # Harmony template, so skip HF tokenizer loading for the external server.
       skip_hf_tokenizer: true
       max_context_length_override: 65536
+      execution_result_role: "user"
+      execution_result_include_call_str: false
+      execution_result_include_call_id: false
+      execution_result_join_parallel_calls: true
 
 hallulens:
   generator_config:
@@ -123,7 +131,7 @@ hallulens:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 
@@ -133,7 +141,7 @@ hle:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 
@@ -146,7 +154,7 @@ m_ifeval:
     temperature: 1.0
     top_p: 0.95
     extra_body:
-      skip_special_tokens: false
+      skip_special_tokens: true
       chat_template_kwargs:
         reasoning_effort: high
 

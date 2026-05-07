@@ -16,6 +16,18 @@ from config_singleton import WandbConfigSingleton
 from .evaluate_utils import LLMAsyncProcessor
 
 
+def _to_plain_dict(value) -> dict:
+    if value is None:
+        return {}
+    try:
+        from omegaconf import OmegaConf
+        if not isinstance(value, dict):
+            return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        pass
+    return dict(value)
+
+
 # ARC-AGI-2では0-9の値が使用される
 COLORMAP = np.array([
     [int(rgb[1:3], 16), int(rgb[3:5], 16), int(rgb[5:7], 16)]
@@ -250,6 +262,8 @@ def evaluate():
         # create inference inputs
         tasks = []
         all_inputs = []
+        generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
+        generator_config["max_tokens"] = cfg[dataset_name].max_output_tokens
         for task_file in task_files:
             task_id = os.path.basename(task_file).split('.')[0]
             with open(task_file, 'r') as f:
@@ -257,7 +271,7 @@ def evaluate():
                 for test_example_id, test_example in enumerate(task['test']):
                     prompt = convert_task_pairs_to_prompt(task['train'], test_example)
                     for num_attempts in range(cfg[dataset_name].num_attempts):
-                        all_inputs.append((prompt, {"max_tokens": cfg[dataset_name].max_output_tokens}))
+                        all_inputs.append((prompt, dict(generator_config)))
                         tasks.append({
                             'id': task_id,
                             'test_example_id': test_example_id,
@@ -372,4 +386,3 @@ def evaluate():
     }])
 
     run.log({f"{dataset_name}_leaderboard_table": leaderboard_table})
-

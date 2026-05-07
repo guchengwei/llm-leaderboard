@@ -25,7 +25,10 @@ class FunctionCall(BaseModel, Generic[FuncNamesT]):
 
 class FunctionCallList(BaseModel, Generic[FuncNamesT]):
     function_calls: List[FunctionCall[FuncNamesT]] = Field(default_factory=list)
-    unavailable_reason: str = ""
+    # The reason is only diagnostic; BFCL scoring does not need a long explanation.
+    # Constraining it prevents reasoning models from spending the whole generation
+    # budget on free-form text before the structured JSON can finish.
+    unavailable_reason: str = Field(default="", max_length=512)
 
 
 class UnifiedOSSJsonSchemaHandler(OSSHandler):
@@ -76,7 +79,11 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
             "max_tokens": self._estimate_leftover_tokens_count(inference_data, fc=False),
             "timeout": 72000,  # Avoid timeout errors
             **self.generator_config,
-            "response_format": FunctionCallList[function_names]
+            "response_format": FunctionCallList[function_names],
+            # Keep normal structured-output behavior unchanged elsewhere. This
+            # handler needs raw content so it can apply a narrow repair for OSS
+            # models that emit one duplicated outer JSON brace under guided JSON.
+            "manual_response_format_parse": True,
         }
 
         extra_body = {}
@@ -86,7 +93,10 @@ class UnifiedOSSJsonSchemaHandler(OSSHandler):
             extra_body["skip_special_tokens"] = self.skip_special_tokens
 
         if len(extra_body) > 0:
-            kwargs["extra_body"] = extra_body
+            if "extra_body" in kwargs:
+                kwargs["extra_body"] = {**kwargs["extra_body"], **extra_body}
+            else:
+                kwargs["extra_body"] = extra_body
 
         start_time = time.time()
         api_response = await self.llm_ap.process_single_async(message, **kwargs)

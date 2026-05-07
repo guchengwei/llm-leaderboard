@@ -34,6 +34,20 @@ _JSON_CODE_FENCE_RE = re.compile(
     re.DOTALL,
 )
 
+_LLMJP4_FINAL_SPECIAL_RE = re.compile(
+    r"<\|channel\|>\s*final\s*<\|message\|>(.*?)(?:<\|return\|>|<\|end\|>|<\|start\|>|$)",
+    re.DOTALL,
+)
+_LLMJP4_ANALYSIS_SPECIAL_RE = re.compile(
+    r"<\|channel\|>\s*(?!final\b)[^<]*<\|message\|>(.*?)(?:<\|end\|>|<\|start\|>|$)",
+    re.DOTALL,
+)
+_LLMJP4_FINAL_TEXT_MARKERS = (
+    " assistant final ",
+    "\nassistant final ",
+    "assistant final ",
+)
+
 
 @dataclass
 class ToolCall:
@@ -62,7 +76,128 @@ class LLMResponse:
 
 def _strip_json_code_fence(text: str) -> str:
     match = _JSON_CODE_FENCE_RE.match(text)
-    return match.group(1).strip() if match else text.strip()
+    if match:
+        return match.group(1).strip()
+
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        # Some OSS models emit an opening fence without a closing fence, or put
+        # the JSON object immediately after the fence as in ```{...}.
+        stripped = stripped[3:].lstrip()
+        if stripped[:4].lower() == "json" and (
+            len(stripped) == 4 or stripped[4].isspace()
+        ):
+            stripped = stripped[4:].lstrip()
+        if stripped.endswith("```"):
+            stripped = stripped[:-3].rstrip()
+
+    return stripped
+
+
+def _structured_json_candidates(text: str) -> list[str]:
+    """Return conservative JSON repair candidates for structured-output parsing."""
+    stripped = _strip_json_code_fence(text)
+    candidates = [stripped]
+
+    # Some reasoning models occasionally emit one extra outer brace under
+    # guided JSON. Keep this repair narrow: only trim a duplicated boundary.
+    if stripped.startswith("{{"):
+        candidates.append(stripped[1:])
+    if stripped.endswith("}}"):
+        candidates.append(stripped[:-1])
+    if stripped.startswith("{{") and stripped.endswith("}}"):
+        candidates.append(stripped[1:-1])
+
+    deduped = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return deduped
+
+
+def _response_format_to_param(response_format: Any) -> Any:
+    if isinstance(response_format, dict):
+        return response_format
+
+    from openai.lib._parsing._completions import type_to_response_format_param
+
+    return type_to_response_format_param(response_format)
+
+
+def _parse_structured_response_content(response_format: Any, content: str) -> tuple[Any, str]:
+    last_error = None
+    for candidate in _structured_json_candidates(content):
+        try:
+            if hasattr(response_format, "model_validate_json"):
+                return response_format.model_validate_json(candidate), candidate
+            return json.loads(candidate), candidate
+        except Exception as e:
+            last_error = e
+
+    if last_error is not None:
+        raise last_error
+    raise json.JSONDecodeError("Empty structured response", content, 0)
+
+
+def _get_model_response_postprocess() -> Optional[str]:
+    try:
+        instance = WandbConfigSingleton.get_instance()
+        cfg = instance.config if instance else None
+        if cfg is None:
+            return None
+        model_cfg = getattr(cfg, "model", {})
+        if hasattr(model_cfg, "get"):
+            mode = model_cfg.get("response_postprocess", None)
+        else:
+            mode = getattr(model_cfg, "response_postprocess", None)
+        return str(mode) if mode else None
+    except Exception:
+        return None
+
+
+def _clean_llmjp4_harmony_text(text: str) -> str:
+    text = re.sub(r"<\|(?:start|channel|constrain|message|end|return|call|startoftext|endoftext)\|>", "", text)
+    return text.strip()
+
+
+def _extract_llmjp4_harmony_final(content: str, reasoning_content: str = "") -> tuple[str, str]:
+    """Extract final-channel text from raw LLM-jp-4 Harmony output.
+
+    The official llm-jp vLLM parser documents incomplete non-streaming support.
+    This opt-in fallback lets benchmarks receive the final answer if an external
+    server returns raw Harmony markup instead of parsed final-channel content.
+    """
+    source = content or ""
+    if not source:
+        return content, reasoning_content
+
+    match = None
+    for candidate in _LLMJP4_FINAL_SPECIAL_RE.finditer(source):
+        match = candidate
+    if match:
+        final_text = _clean_llmjp4_harmony_text(match.group(1))
+        analyses = [_clean_llmjp4_harmony_text(m.group(1)) for m in _LLMJP4_ANALYSIS_SPECIAL_RE.finditer(source)]
+        analyses = [item for item in analyses if item]
+        return final_text, reasoning_content or "\n\n".join(analyses)
+
+    marker_index = -1
+    marker_len = 0
+    for marker in _LLMJP4_FINAL_TEXT_MARKERS:
+        idx = source.rfind(marker)
+        if idx > marker_index:
+            marker_index = idx
+            marker_len = len(marker)
+    if marker_index != -1:
+        return _clean_llmjp4_harmony_text(source[marker_index + marker_len:]), reasoning_content
+
+    return content, reasoning_content
+
+
+def _postprocess_model_response_content(content: str, reasoning_content: str) -> tuple[str, str]:
+    mode = _get_model_response_postprocess()
+    if mode == "llmjp4_harmony_final":
+        return _extract_llmjp4_harmony_final(content, reasoning_content)
+    return content, reasoning_content
 
 
 def _replace_json_literals_for_python(text: str) -> str:
@@ -629,6 +764,7 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
+        content, reasoning_content = _postprocess_model_response_content(content, reasoning_content)
         reasoning_details = getattr(response.choices[0].message, 'reasoning_details', None)
         reasoning_plain = getattr(response.choices[0].message, 'reasoning', None)
         return LLMResponse(
@@ -696,9 +832,14 @@ class OpenAIClient:
             elif all_kwargs["include_reasoning"] is False:
                 params["extra_body"]["reasoning"] = {"exclude": True}
 
+        manual_response_format = None
+        if "response_format" in params and all_kwargs.get("manual_response_format_parse"):
+            manual_response_format = params["response_format"]
+            params["response_format"] = _response_format_to_param(manual_response_format)
+
         try:
             # Structured output
-            if "response_format" in params:
+            if "response_format" in params and manual_response_format is None:
                 response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
                 parsed_output = response.choices[0].message.parsed
             else:
@@ -731,7 +872,7 @@ class OpenAIClient:
                         f"(max_context_length:{max_context_length}, prompt_tokens:{prompt_tokens}, max_output_tokens:{completion_tokens})"
                     )
                     params["max_tokens"] = shrinked_completion_tokens
-                    if "response_format" in params:
+                    if "response_format" in params and manual_response_format is None:
                         response: OpenAIChatCompletion = await self.async_client.beta.chat.completions.parse(**params)
                         parsed_output = response.choices[0].message.parsed
                     else:
@@ -762,6 +903,12 @@ class OpenAIClient:
         # OpenRouter reasoning field support
         if not reasoning_content and hasattr(response.choices[0].message, 'reasoning'):
             reasoning_content = getattr(response.choices[0].message, 'reasoning', '')
+        content, reasoning_content = _postprocess_model_response_content(content, reasoning_content)
+
+        if manual_response_format is not None:
+            parsed_output, content = _parse_structured_response_content(
+                manual_response_format, content
+            )
 
         # usage が欠落する実装に対しても安全にデフォルト0で継続
         usage = getattr(response, 'usage', None)

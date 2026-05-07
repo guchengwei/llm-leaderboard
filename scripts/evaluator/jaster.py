@@ -25,6 +25,19 @@ from .evaluate_utils import (
     evaluate_robustness,
 )
 
+
+def _to_plain_dict(value) -> dict:
+    if value is None:
+        return {}
+    try:
+        from omegaconf import OmegaConf
+        if not isinstance(value, dict):
+            return OmegaConf.to_container(value, resolve=True) or {}
+    except Exception:
+        pass
+    return dict(value)
+
+
 def evaluate_n_shot(few_shots: bool):
     # Retrieve the instance from WandbConfigSingleton and load the W&B run and configuration
     instance = WandbConfigSingleton.get_instance()
@@ -157,7 +170,8 @@ def evaluate_n_shot(few_shots: bool):
                 )
                 
                 # Add inputs only once per sample (for LLM processing)
-                generator_config = {"max_tokens": cfg.jaster.override_max_tokens or task_data["output_length"]}
+                generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
+                generator_config["max_tokens"] = cfg.jaster.override_max_tokens or task_data["output_length"]
                 inputs.extend([messages, generator_config])
                 
                 for metrics in metrics_list:

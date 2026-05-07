@@ -17,7 +17,14 @@ if "mistralai" not in sys.modules:
 
 from llm_inference_adapter import (
     _parse_tool_call_arguments,
+    _parse_structured_response_content,
 )
+from pydantic import BaseModel, Field
+
+
+class StructuredFunctionCalls(BaseModel):
+    function_calls: list[dict] = Field(default_factory=list)
+    unavailable_reason: str = ""
 
 
 def test_parse_tool_call_arguments_accepts_valid_json():
@@ -57,3 +64,44 @@ def test_parse_tool_call_arguments_raises_on_irreparable_input():
     except json.JSONDecodeError:
         return
     assert False, "Expected JSONDecodeError for irreparable tool call arguments"
+
+
+def test_parse_structured_response_content_repairs_extra_outer_opening_brace():
+    parsed, normalized = _parse_structured_response_content(
+        StructuredFunctionCalls,
+        '{{"function_calls": [], "unavailable_reason": "no function exists"}',
+    )
+
+    assert normalized == '{"function_calls": [], "unavailable_reason": "no function exists"}'
+    assert parsed.function_calls == []
+    assert parsed.unavailable_reason == "no function exists"
+
+
+def test_parse_structured_response_content_repairs_extra_outer_closing_brace():
+    parsed, normalized = _parse_structured_response_content(
+        StructuredFunctionCalls,
+        '{"function_calls": [], "unavailable_reason": ""}}',
+    )
+
+    assert normalized == '{"function_calls": [], "unavailable_reason": ""}'
+    assert parsed.function_calls == []
+
+
+def test_parse_structured_response_content_repairs_unclosed_code_fence():
+    parsed, normalized = _parse_structured_response_content(
+        StructuredFunctionCalls,
+        '```{\n    "function_calls": [],\n    "unavailable_reason": ""\n}',
+    )
+
+    assert normalized == '{\n    "function_calls": [],\n    "unavailable_reason": ""\n}'
+    assert parsed.function_calls == []
+
+
+def test_parse_structured_response_content_repairs_unclosed_json_code_fence():
+    parsed, normalized = _parse_structured_response_content(
+        StructuredFunctionCalls,
+        '```json\n{"function_calls": [], "unavailable_reason": ""}',
+    )
+
+    assert normalized == '{"function_calls": [], "unavailable_reason": ""}'
+    assert parsed.function_calls == []

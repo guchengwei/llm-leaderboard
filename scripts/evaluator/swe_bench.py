@@ -867,8 +867,11 @@ def evaluate():
         max_tokens = cfg.swebench.get("max_tokens", 32768)
         model_name = cfg.model.pretrained_model_name_or_path
         
-        generator_config = _to_plain_dict(cfg.swebench.get("generator_config", {}))
-        generator_config.setdefault("max_tokens", max_tokens)
+        swebench_generator_config = _to_plain_dict(cfg.swebench.get("generator_config", {}))
+        generator_config = _to_plain_dict(getattr(cfg, "generator", {}))
+        generator_config.update(swebench_generator_config)
+        if "max_tokens" not in swebench_generator_config:
+            generator_config["max_tokens"] = max_tokens
         
         # パッチ生成
         generate_predictions(samples, llm, generator_config, predictions_file, model_name)
