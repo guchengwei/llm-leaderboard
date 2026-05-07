@@ -1,0 +1,90 @@
+wandb:
+  run_name: "mistralai/Ministral-3-14B-Reasoning-2512" # use run_name defined above
+
+api: vllm-docker
+num_gpus: 1
+batch_size: 256
+
+model:
+  use_wandb_artifacts: false
+  pretrained_model_name_or_path: "mistralai/Ministral-3-14B-Reasoning-2512" #if you use openai api, put the name of model
+  bfcl_model_id: "unified-oss-fc"
+  size_category: "Medium (10–30B)"
+  size: 13945031680
+  release_date: "12/3/2025"
+
+vllm:
+  vllm_tag: b927ab6136adb4084e718034cba84002f4aabb95
+  reasoning_parser: mistral
+  enable_auto_tool_choice: true
+  tool_call_parser: mistral
+  extra_args:
+    - "--config_format=mistral"
+    - "--load_format=mistral"
+    - "--tokenizer_mode=mistral"
+
+generator:
+  max_tokens: 32768
+  temperature: 0.7
+  top_p: 0.95
+  tool_choice: none # BFCL以外でtool callが呼ばれてcontentがNoneになる対策
+
+jaster:
+  override_max_tokens: 32768
+
+jbbq:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+toxicity:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+jtruthfulqa:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+swebench:
+  max_tokens: 32768
+
+mtbench:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+  temperature_override:
+    writing: 0.7
+    roleplay: 0.7
+    extraction: 0.7
+    math: 0.7
+    coding: 0.7
+    reasoning: 0.7
+    stem: 0.7
+    humanities: 0.7
+
+bfcl:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+hallulens:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+hle:
+  generator_config:
+    max_tokens: 32768
+    temperature: 0.7
+    top_p: 0.95
+
+arc_agi:
+  max_output_tokens: 32768
