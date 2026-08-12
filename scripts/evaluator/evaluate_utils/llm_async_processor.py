@@ -103,11 +103,11 @@ class LLMAsyncProcessor:
 
     @error_handler
     @backoff.on_exception(
-        backoff.expo,
+        backoff.expo, 
         tuple(filter(None, [
             # OpenAI例外
-            openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError,
-            openai.InternalServerError,
+            openai.APIConnectionError, openai.APITimeoutError, openai.RateLimitError, 
+            openai.InternalServerError, 
             # Cohere例外（利用可能な場合）
             getattr(cohere, 'TooManyRequestsError', None) if COHERE_AVAILABLE else None,
             getattr(cohere, 'APIError', None) if COHERE_AVAILABLE else None,
