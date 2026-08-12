@@ -1,16 +1,16 @@
 import asyncio
 import functools
-import inspect
+import traceback
 import json
+import inspect
 import os
 import random
-import traceback
 from typing import Any, TypeAlias, List, Tuple, Optional
 
 import backoff
+from tqdm.asyncio import tqdm as atqdm
 import openai
 import pydantic_core
-from tqdm.asyncio import tqdm as atqdm
 
 from config_singleton import WandbConfigSingleton
 from llm_inference_adapter import LLMResponse

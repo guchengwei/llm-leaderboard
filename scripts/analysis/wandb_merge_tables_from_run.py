@@ -5,6 +5,15 @@ W&B リーダーボードテーブル集計スクリプト
 指定した W&B run の summary / artifact に含まれる leaderboard_table 系テーブルを
 ダウンロードし、モデル×ベンチマークの wide / long 形式スコア表に統合します。
 --write-back で統合結果を新しい run として W&B に書き戻すこともできます。
+
+使い方の例:
+
+    python scripts/analysis/wandb_merge_tables_from_run.py --run <entity>/<project>/<run_id>
+    python scripts/analysis/wandb_merge_tables_from_run.py --run <entity>/<project>/<run_id> --write-back --project <target_project>
+
+出力:
+    <out>/merged_wide_scores.csv  モデル×ベンチマークのスコア表（wide 形式）
+    <out>/scores_long.csv         Report 用の long 形式スコア表
 """
 
 import argparse
