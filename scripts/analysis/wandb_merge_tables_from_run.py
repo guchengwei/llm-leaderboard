@@ -134,7 +134,7 @@ def download_tables_from_run_files(run, out_dir: Path) -> List[Path]:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", required=True, help="entity/project/run_id  e.g. <entity>/<project>/<run_id>")
-    ap.add_argument("--out", default="wandb_tables_dump", help="local output dir")
+    ap.add_argument("--out", default="artifacts/wandb_tables_dump", help="local output dir (default is already git-ignored)")
     ap.add_argument("--filter", default="leaderboard_table", help="substring filter, e.g. output_table or leaderboard_table or empty for all")
     ap.add_argument("--write-back", action="store_true", help="log merged table back to W&B as a new run")
     ap.add_argument("--project", default=None, help="override project for write-back")

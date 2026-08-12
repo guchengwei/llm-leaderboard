@@ -130,8 +130,6 @@ wandb_export_*.csv
 /generation*.jsonl
 /predictions/
 *.nejumi_*.json
-/wandb_tables_dump/
-nohup.out
 
 # local sandbox runtime data
 /volumes/sandbox/*
